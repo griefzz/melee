@@ -44,13 +44,27 @@ float atan2f(float y, float x)
 
 float acosf(float x)
 {
+#ifdef PORT
+    // PORT: MWCC emitted fnmsubs at acosf+0x14, +0x38, +0x48 and +0x58, so
+    // `1 - x * x` and `3 - guess * guess * result` are each one fused
+    // operation, with `guess * guess` rounded alone. __fnmsubs comes from
+    // port/compat/placeholder.h.
+    float result = __fnmsubs(x, x, 1.0F);
+#else
     float result = 1.0F - x * x;
+#endif
     if (result > 0) {
         float guess;
         guess = __frsqrte(result);
+#ifdef PORT
+        guess = 0.5f * guess * __fnmsubs(result, guess * guess, 3.0f);
+        guess = 0.5f * guess * __fnmsubs(result, guess * guess, 3.0f);
+        guess = 0.5f * guess * __fnmsubs(result, guess * guess, 3.0f);
+#else
         guess = 0.5f * guess * (3.0f - guess * guess * result);
         guess = 0.5f * guess * (3.0f - guess * guess * result);
         guess = 0.5f * guess * (3.0f - guess * guess * result);
+#endif
         result = guess;
     } else if (result) {
         result = NAN;
@@ -62,7 +76,12 @@ float acosf(float x)
 
 float asinf(float x)
 {
+#ifdef PORT
+    // PORT: fnmsubs at asinf+0x18: `1 - x * x` as one fused operation.
+    return atanf(x * lb_sqrtf(__fnmsubs(x, x, 1.0f)));
+#else
     return atanf(x * lb_sqrtf(-(x * x - 1.0f)));
+#endif
 }
 
 static float lb_sqrtf(float x)
@@ -70,9 +89,16 @@ static float lb_sqrtf(float x)
     if (x > 0.0f) {
         float guess;
         guess = __frsqrte(x);
+#ifdef PORT
+        // PORT: fnmsubs at lb_sqrtf+0x24, +0x34 and +0x44, as in acosf().
+        guess = 0.5f * guess * __fnmsubs(x, guess * guess, 3.0f);
+        guess = 0.5f * guess * __fnmsubs(x, guess * guess, 3.0f);
+        guess = 0.5f * guess * __fnmsubs(x, guess * guess, 3.0f);
+#else
         guess = 0.5f * guess * (3.0f - guess * guess * x);
         guess = 0.5f * guess * (3.0f - guess * guess * x);
         guess = 0.5f * guess * (3.0f - guess * guess * x);
+#endif
         return guess;
     }
 
@@ -144,7 +170,7 @@ static const float atanf_lookup[] = {
     0.0,
 };
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) || defined(PORT) // PORT: HAL's atanf, not libm's
 float atanf(float x)
 {
     float const silver_ratio = 2.4142136573791504f;
@@ -211,6 +237,19 @@ float atanf(float x)
         float result_squared = result * result;
         lookup_ptr = &atanf_lookup[lookup_index];
 
+#ifdef PORT
+        // PORT: six fmadds at atanf+0x160 to +0x184: Horner in r^2, then
+        // (r * r^2) * poly + r with r * r^2 rounded alone.
+        {
+            float poly = __builtin_fmaf(result_squared, atanf_lookup[6],
+                                        atanf_lookup[5]);
+            poly = __builtin_fmaf(result_squared, poly, atanf_lookup[4]);
+            poly = __builtin_fmaf(result_squared, poly, atanf_lookup[3]);
+            poly = __builtin_fmaf(result_squared, poly, atanf_lookup[2]);
+            poly = __builtin_fmaf(result_squared, poly, atanf_lookup[1]);
+            result = __builtin_fmaf(result * result_squared, poly, result);
+        }
+#else
         // clang-format off
         result = result *
             result_squared * (
@@ -227,6 +266,7 @@ float atanf(float x)
                 ) + atanf_lookup[1]
             ) + result;
         // clang-format on
+#endif
 
         result += lookup_ptr[27];
         result += lookup_ptr[20];

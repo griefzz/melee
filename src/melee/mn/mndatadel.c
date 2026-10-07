@@ -84,9 +84,21 @@ static u16 mnDataDel_803EF8C8[] = {
     0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC6,
 };
 static Vec3 lbl_803EF8D4 = { -5.5F, -2.8F, 23 };
+#ifdef PORT
+// PORT: mnDataDel_80250170() loads all three through
+// `(&mnDataDel_804A0918)[0..2]`, which is the next two statics only where
+// the linker put them end to end. Here [1] and [2] would be whatever
+// follows, and the warning modal would be built from animation nothing
+// loaded. One array, with the three names mapped onto its elements.
+static StaticModelDesc port_mnDataDel_assets[3];
+#define mnDataDel_804A0918 (port_mnDataDel_assets[0])
+#define mnDataDel_804A0928 (port_mnDataDel_assets[1])
+#define mnDataDel_804A0938 (port_mnDataDel_assets[2])
+#else
 static StaticModelDesc mnDataDel_804A0918;
 static StaticModelDesc mnDataDel_804A0928;
 static StaticModelDesc mnDataDel_804A0938;
+#endif
 
 HSD_Text* mnDataDel_804D6C6C;
 HSD_GObj* mnDataDel_804D6C68;
@@ -124,7 +136,11 @@ void mnDataDel_8024E940(void)
     f32 tmp2;
     f32 temp_f31;
     s32* data;
+#ifdef PORT
+    intptr_t temp_ret; // PORT: mn_80231634()'s jobj; an s32 sign-extends it
+#else
     s32 temp_ret;
+#endif
     struct MnDataDelGObjUserData* temp_r31;
     int i;
     s32 var_r30;
@@ -180,7 +196,11 @@ void mnDataDel_8024EA6C(void)
     u32* data;
     enum_t lang;
     int i;
+#ifdef PORT
+    intptr_t temp_ret; // PORT: mn_80231634()'s jobj; an s32 sign-extends it
+#else
     s32 temp_ret;
+#endif
     u8 pad[0x8];
     HSD_JObj* sp18;
     PAD_STACK(0x10);
@@ -254,7 +274,14 @@ static inline struct WarnCmnData* mnDataDel_GetWarnData(void)
 
 union mnDataDel_AnimateWarning_cursor {
     struct mnDataDel_AnimateWarning_cursor_fields {
+#ifdef PORT
+        // PORT: yes/no are slots[3]/[4] only while the pad is three pointers
+        // wide; twelve bytes is three pointers on the console and one and a
+        // half here.
+        HSD_JObj* pad[3];
+#else
         u8 pad[12];
+#endif
         HSD_JObj* yes;
         HSD_JObj* no;
     } fields;
@@ -454,7 +481,11 @@ void fn_8024F318(HSD_GObj* gobj)
     HSD_Text* text;
     f32 tmp2;
     f32 frame;
+#ifdef PORT
+    intptr_t temp_ret; // PORT: mn_80231634()'s jobj; an s32 sign-extends it
+#else
     s32 temp_ret;
+#endif
     s32 sis_id;
     u32 buttons;
     u8 cursor;
@@ -752,17 +783,32 @@ void fn_8024FBA4(HSD_GObj* gobj)
     frame = mn_8022EE84(GET_JOBJ(gobj), &mnDataDel_803EF870.xC,
                         (enum _HSD_TypeMask) 0x480);
     for (i = 0; i < 6; i++) {
+#ifdef PORT
+        // PORT: the #else uses console byte offsets. The joint slots are
+        // x10[], eight bytes a slot from +0x18 here.
+        mn_8022EE84(((struct MnDataDelGObjUserData*) user_data)
+                        ->x10[mnDataDel_803EF8AC[i]],
+                    &data->xC, (enum _HSD_TypeMask) 0x480);
+#else
         mn_8022EE84(
             *(HSD_JObj**) (user_data + mnDataDel_803EF8AC[i] * 4 + 0x10),
             &data->xC, (enum _HSD_TypeMask) 0x480);
+#endif
     }
     if (frame >= data->xC.end_frame) {
         HSD_GObjFree(gobj);
     }
 }
 
+#ifdef PORT
+// PORT: takes mn_80231634()'s jobj; an int cannot hold a MEM1 address, which
+// sign-extends.
+static inline HSD_JObj* fn_8024FC48_inline(intptr_t arg0);
+static inline HSD_JObj* fn_8024FC48_inline(intptr_t arg0)
+#else
 static inline HSD_JObj* fn_8024FC48_inline(int arg0);
 static inline HSD_JObj* fn_8024FC48_inline(int arg0)
+#endif
 {
     return (HSD_JObj*) arg0;
 }
@@ -780,15 +826,29 @@ void fn_8024FC48(HSD_GObj* gobj)
         HSD_GObjProc_RemoveProc(HSD_GObj_CurrentInvokedProc);
         proc = HSD_GObj_SetupProc(gobj, fn_8024FBA4, 0);
         proc->flags_3 = HSD_GObj_804D783C;
+#ifdef PORT
+        // PORT: +0xC is xC on the console; it is +0x10 here.
+        HSD_SisLib_803A5CC4(((struct MnDataDelGObjUserData*) user_data)->xC);
+#else
         HSD_SisLib_803A5CC4(*(HSD_Text**) (user_data + 0xC));
+#endif
     } else {
         for (i = 0; i < 6; i++) {
+#ifdef PORT
+            // PORT: console byte offsets; see fn_8024FBA4().
+            lb_80011E24(fn_8024FC48_inline(mn_80231634(
+                            (struct mn_80231634_t*) ((
+                                 struct MnDataDelGObjUserData*) user_data)
+                                ->x10[mnDataDel_803EF8AC[i]])),
+                        &jobj, 1, -1);
+#else
             lb_80011E24(
                 fn_8024FC48_inline(mn_80231634(
                     *(struct mn_80231634_t**) ((u8*) gobj->user_data +
                                                mnDataDel_803EF8AC[i] * 4 +
                                                0x10))),
                 &jobj, 1, -1);
+#endif
             if (user_data[0] == i) {
                 mn_8022EC18(jobj, &mnDataDel_803EF888, (HSD_TypeMask) 0x400);
             } else {
@@ -821,15 +881,28 @@ void fn_8024FD40(HSD_GObj* gobj)
         HSD_GObjProc_RemoveProc(HSD_GObj_CurrentInvokedProc);
         proc = HSD_GObj_SetupProc(gobj, fn_8024FBA4, 0);
         proc->flags_3 = HSD_GObj_804D783C;
+#ifdef PORT
+        // PORT: +0xC is xC on the console; it is +0x10 here.
+        HSD_SisLib_803A5CC4(((struct MnDataDelGObjUserData*) user_data)->xC);
+#else
         HSD_SisLib_803A5CC4(*(HSD_Text**) (user_data + 0xC));
+#endif
         return;
     }
     frame =
         mn_8022EE84(jobj, &mnDataDel_803EF870.x0, (enum _HSD_TypeMask) 0x480);
     for (i = 0; i < 6; i++) {
+#ifdef PORT
+        // PORT: console byte offsets; see fn_8024FBA4().
+        mn_8022EE84(((struct MnDataDelGObjUserData*) user_data)
+                        ->x10[mnDataDel_803EF8AC[i]],
+                    mnDataDel_GetAnimSettings(data),
+                    (enum _HSD_TypeMask) 0x480);
+#else
         mn_8022EE84(
             *(HSD_JObj**) (user_data + mnDataDel_803EF8AC[i] * 4 + 0x10),
             mnDataDel_GetAnimSettings(data), (enum _HSD_TypeMask) 0x480);
+#endif
     }
     if (frame == data->x0.end_frame) {
         HSD_GObjProc_RemoveProc(HSD_GObj_CurrentInvokedProc);
@@ -877,6 +950,16 @@ void mnDataDel_8024FE4C(u8 arg0)
     }
     user_data->xC = NULL;
     GObj_InitUserData(gobj, 0U, HSD_Free, user_data);
+#ifdef PORT
+    // PORT: a four-byte stride from +0x10 is x10[] on the console. Here its
+    // eight-byte stores overlap xC and every slot, and x10[1] holds two
+    // joints' low halves, which HSD_JObjAddChild() dereferences. By index.
+    enabled = 0;
+    (void) cursor;
+    for (i = 0; i < (int) ARRAY_SIZE(user_data->x10); i++) {
+        lb_80011E24(root, &user_data->x10[i], i, -1);
+    }
+#else
     i = (enabled = 0);
     cursor = (u8*) user_data + i * 4;
     do {
@@ -884,6 +967,7 @@ void mnDataDel_8024FE4C(u8 arg0)
         i++;
         cursor += 4;
     } while (i < (int) ARRAY_SIZE(user_data->x10));
+#endif
     proc = HSD_GObj_SetupProc(gobj, fn_8024FD40, 0U);
     proc->flags_3 = HSD_GObj_804D783C;
     assets = &mnDataDel_804A0928;

@@ -1,4 +1,9 @@
 #include "lb_00F9.h"
+#ifdef PORT
+#include <port/port.h> // port_unimplemented(), in lb_8001044C()
+#include <melee/ft/types.h> // Fighter_x1670_t and struct xB6C_t: the two
+#include <melee/it/types.h> // arrays lb_8001044C() reads as lb_Collider
+#endif
 
 #include <Runtime/platform.h>
 
@@ -26,6 +31,32 @@
 #include <sysdolphin/baselib/quatlib.h>
 #include <sysdolphin/baselib/tobj.h>
 
+#ifdef PORT
+// PORT: the pad at +0x10 is the callers' HSD_JObj* (Fighter_x1670_t.jobj,
+// xB6C_t.xB7C), eight bytes here, so a char[8] there would put `position` on
+// the float before the real one and make the stride eight bytes short. The
+// layout is the same on PowerPC; the asserts hold it to both callers' types.
+struct lb_Collider {
+    /* 0x00 */ char pad_00[0x0C];
+    /* 0x0C */ f32 radius;
+    /* 0x10 */ void* jobj;
+    /* 0x14 */ char pad_14[0x04];
+    /* 0x18 */ Vec3 position;
+    /* 0x24 */ char pad_24[0x04];
+};
+_Static_assert(offsetof(struct lb_Collider, radius) ==
+                       offsetof(Fighter_x1670_t, v2) &&
+                   offsetof(struct lb_Collider, position) ==
+                       offsetof(Fighter_x1670_t, x18) &&
+                   sizeof(struct lb_Collider) == sizeof(Fighter_x1670_t),
+               "lb_Collider must overlay Fighter_x1670_t (ftdynamics.c)");
+_Static_assert(offsetof(struct lb_Collider, radius) ==
+                       offsetof(struct xB6C_t, xB78) &&
+                   offsetof(struct lb_Collider, position) ==
+                       offsetof(struct xB6C_t, xB84) &&
+                   sizeof(struct lb_Collider) == sizeof(struct xB6C_t),
+               "lb_Collider must overlay Item.xB6C_vars (item.c)");
+#else
 struct lb_Collider {
     /* 0x00 */ char pad_00[0x0C];
     /* 0x0C */ f32 radius;
@@ -33,6 +64,7 @@ struct lb_Collider {
     /* 0x18 */ Vec3 position;
     /* 0x24 */ char pad_24[0x04];
 };
+#endif
 
 const struct lb_803B7280_t {
     Vec3 v0;
@@ -444,6 +476,18 @@ void lb_8001044C(DynamicsDesc* desc, void* colliders_raw, int num_colliders,
     {
         s32 i;
         for (i = 0; i < (s32) part; i++) {
+#ifdef PORT
+            // PORT: a list shorter than the part index means the DAT
+            // transcoder converted one of the two wrong; the console built
+            // both from one file. Leave the bone where it is rather than
+            // follow the null, and count it.
+            if (cur->next == NULL) {
+                port_unimplemented("lb_8001044C: dynamics list shorter "
+                                   "than the part asked for (a DAT "
+                                   "conversion bug)");
+                return;
+            }
+#endif
             cur = cur->next;
             loop_index++;
         }

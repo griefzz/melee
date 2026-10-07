@@ -1,6 +1,9 @@
 #include "lbarq.h"
 
 #include <placeholder.h>
+#ifdef PORT
+#include <port/aram.h> // port_arq_pump()
+#endif
 
 #include <dolphin/ar.h>
 #include <dolphin/os.h>
@@ -35,6 +38,14 @@ typedef struct lbArqGlobal {
 #endif
 static lbArqState lbArq_80014ABC(lbArqNode* arg0)
 {
+#ifdef PORT
+    // PORT: the caller spins on this until the state is DONE, and on the
+    // console the ARQ interrupt completes the request inside that loop. The
+    // port defers completions to pumps, and the loop reaches none, so this
+    // pumps: the completion lands between two iterations, where the
+    // interrupt did. See docs/design/sdk.md, "Interrupts and completions".
+    port_arq_pump();
+#endif
     return arg0->state;
 }
 #ifdef __MWERKS__

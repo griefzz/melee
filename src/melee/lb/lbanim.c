@@ -62,7 +62,17 @@ HSD_FObj* fn_8001E60C(FigaTrack* track, s8 frames)
             track++;
         }
     }
+#ifdef PORT
+    // PORT: the loop assigns fobj only when it allocates, so a joint whose
+    // first track is obj_type 5, 6 or 7 builds no FObj and the write goes
+    // through an uninitialised pointer: stale stack on the console, a fault
+    // on the host.
+    if (first != NULL) {
+        fobj->next = NULL;
+    }
+#else
     fobj->next = NULL;
+#endif
     return first;
 }
 

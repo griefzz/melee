@@ -7,6 +7,9 @@
 #include "lbsnap.h"
 #include <dolphin/os.h>
 #include <dolphin/vi.h>
+#ifdef PORT
+#include <port/alarm.h> // port_alarm_is_pad_sampler()
+#endif
 #include <sysdolphin/baselib/controller.h>
 
 struct UnkArrElem {
@@ -108,6 +111,13 @@ void lb_80019628(void)
     OSCreateAlarm(&lb_804329F0.alarm);
     OSSetPeriodicAlarm(&lb_804329F0.alarm, lb_804329F0.x40, lb_804329F0.x40,
                        (OSAlarmHandler) fn_800195FC);
+#ifdef PORT
+    // PORT: names the controller sampler to the alarm shim. The game steps
+    // once per sample it queues, so the shim fires it from the pad queue
+    // rather than the host clock; every other periodic alarm fires on the
+    // frame clock. See docs/design/sdk.md, "Alarms".
+    port_alarm_is_pad_sampler(&lb_804329F0.alarm);
+#endif
     lb_804329F0.x48 = 1;
 }
 

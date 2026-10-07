@@ -1,4 +1,7 @@
 #include "mnstagesel.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <placeholder.h>
 
@@ -236,7 +239,15 @@ void fn_80259D84(HSD_GObj* gobj)
         if (mnStageSel_804D6CAF == 0) {
             mnStageSel_80259C28();
         }
+#ifdef PORT
+        // PORT: Slippi's CheckForToggledOnStageName.asm (+0xB0): the frozen
+        // toggle changing under a hovered Stadium replaces its name as a new
+        // icon would.
+        if (temp_r31->x0 != mnStageSel_804D6CAE ||
+            port_hook_sss_stage_name_refresh(temp_r31->x0)) {
+#else
         if (temp_r31->x0 != mnStageSel_804D6CAE) {
+#endif
             if (temp_r31->x0 < 0x1E &&
                 mnStageSel_803F06D0[temp_r31->x0].x8 >= 2)
             {
@@ -245,7 +256,13 @@ void fn_80259D84(HSD_GObj* gobj)
             sfxMove();
             temp_r31->x4 = 0;
             temp_r31->x2 = 2;
+#ifdef PORT
+            // PORT: Slippi's CheckForFrozenOnStageName.asm (+0x10C).
+            mnStageSel_80259ED8(
+                port_hook_sss_stage_name_id(mnStageSel_804D6CAE));
+#else
             mnStageSel_80259ED8(mnStageSel_804D6CAE);
+#endif
         }
         break;
     case 2:
@@ -288,6 +305,22 @@ void mnStageSel_80259ED8(int id)
     temp_r3_2->x0 = id;
     temp_r3_2->x4 = 0;
     temp_r3_2->x2 = 0;
+#ifdef PORT
+    // PORT: Slippi's IncMaxNames.asm (+0xDC) lets a name id past the icon
+    // table reach the animation, and its StoreNameId.asm (+0xD4) stores the
+    // icon the name belongs to. On the console such an id reads the bytes
+    // after the table, which the port does not have; the hook says what they
+    // hold.
+    if (id >= 0x1E) {
+        int icon = id;
+        int frame = port_hook_sss_stage_name_past_table(-1, id, &icon);
+
+        temp_r3_2->x0 = (u16) icon;
+        if (frame >= 0) {
+            do_anim(jobj, frame);
+        }
+    } else
+#endif
     if (id < 0x1E && mnStageSel_803F06D0[id].x8 >= 2) {
         do_anim(jobj, 20.0F * mnStageSel_803F06D0[id].x9);
     }
@@ -380,6 +413,11 @@ void fn_8025A310(HSD_GObj* gobj)
                 if (sp10.y - mnStageSel_803F06D0[i].x10 < sp1C.y &&
                     sp10.y + mnStageSel_803F06D0[i].x10 > sp1C.y)
                 {
+#ifdef PORT
+                    // PORT: Slippi's CursorOnHoverStadium.asm (+0x220): Z
+                    // here toggles frozen Stadium.
+                    port_hook_sss_cursor_on_icon(i, jobj);
+#endif
                     mnStageSel_804D6CAE = i;
                     return;
                 }
@@ -472,6 +510,11 @@ static inline void make_bg_model(HSD_JObj** out)
     jobj = HSD_JObjLoadJoint(sss_models->menu_border.joint);
     HSD_GObjObject_80390A70(gobj, HSD_GObj_JObjKind, jobj);
     GObj_SetupGXLink(gobj, HSD_GObj_JObjCallback, 4, 0x82);
+#ifdef PORT
+    // PORT: Slippi's StageSelectTextProc.asm (+0x2D4 of the scene's entry):
+    // its border animates the "alt stage" text.
+    if (!port_hook_sss_border_built(gobj, &mnStageSel_804D6CAE))
+#endif
     HSD_GObj_SetupProc(gobj, mn_8022EAE0, 0);
     HSD_JObjAddAnimAll(jobj, sss_models->menu_border.animjoint,
                        sss_models->menu_border.matanim_joint,
@@ -514,6 +557,12 @@ void mnStageSel_Scene_OnEnter(void* arg0)
     PAD_STACK(0xDC - 0x50);
 
     sss_data = (SSSData*) arg0;
+#ifdef PORT
+    // PORT: the sss_forced_stage hook; --stage answers it
+    // (port/game/debug/start_flags.c).
+    sss_data->force_stage_id =
+        (s8) port_hook_sss_forced_stage(sss_data->force_stage_id);
+#endif
 
     if (sss_data->force_stage_id < 0) {
         if (lbLang_IsSavedLanguageUS() != 0) {
@@ -832,12 +881,27 @@ void mnStageSel_Scene_OnFrame(void)
         gm_801A4B60();
         return;
     }
+#ifdef PORT
+    // PORT: Slippi's online SSS ignores L+R+Start (DisableLRSTART.asm,
+    // +0x54).
+    if (sss_data->no_lras == 0 && mn_8022F218() &&
+        !port_hook_menu_lr_start_blocked()) {
+#else
     if (sss_data->no_lras == 0 && mn_8022F218()) {
+#endif
         sfxBack();
         lb_800145F4();
         HSD_GObjFree(mnStageSel_804D6C9C);
         mn_8022F268();
+#ifdef PORT
+        // PORT: the debug_menu_enabled hook, for Jorgasms' L+R+A Returns to
+        // CSS during Stage Load, `04 +0x6C <- li r3, 2`: GM_VS in place of
+        // GM_MENU. Inert unless --slippi-general.
+        gm_ChangeGameModeAfterCurrentScene(
+            port_hook_debug_menu_enabled() ? GM_VS : GM_MENU);
+#else
         gm_ChangeGameModeAfterCurrentScene(GM_MENU);
+#endif
         gm_801A4B60();
         return;
     }

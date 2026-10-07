@@ -19,6 +19,23 @@
 #include <sysdolphin/baselib/state.h>
 #include <sysdolphin/baselib/tev.h>
 
+#ifdef PORT
+// PORT: the capsule tests' multiply-adds as MWCC fused them, read out of the
+// DOL operand by operand: lbColl_80006094() (capsule against capsule, 36
+// sites) and lbColl_80005EBC() (a point's distance to a segment, 9). A sum of
+// three products is fused the same way throughout: the y term multiplied
+// alone, then x and z fused onto it. Unfused, a near-tangent clash or an
+// inert-box test can come out the other way. See docs/design/build.md,
+// "Rounding and division".
+#define LC_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#define LC_MSUB(a, b, c) __builtin_fmaf((a), (b), -(c))
+#define LC_MADD_D(a, b, c) ((float) __builtin_fma((a), (b), (c)))
+#else
+#define LC_MADD(a, b, c) ((a) * (b) + (c))
+#define LC_MSUB(a, b, c) ((a) * (b) - (c))
+#define LC_MADD_D(a, b, c) ((a) * (b) + (c))
+#endif
+
 /* 006E58 */ static bool
 lbColl_80006E58(Vec3* hit_start, Vec3* hit_end, Vec3* hurt_start,
                 Vec3* hurt_end, Vec3* hit_closest, Vec3* hurt_closest,
@@ -371,8 +388,13 @@ float lbColl_80005EBC(const Vec3* arg0, const Vec3* arg1, const Vec3* arg2,
     d2.y = sp50.y - sp38.y;
     d2.z = sp50.z - sp38.z;
 
+#if defined(PORT) || defined(LINT)
+    d1_dot_d1 = LC_MADD(d1.z, d1.z, LC_MADD(d1.x, d1.x, d1.y * d1.y));
+    d1_dot_d2 = LC_MADD(d1.z, d2.z, LC_MADD(d1.x, d2.x, d1.y * d2.y));
+#else
     d1_dot_d1 = d1.x * d1.x + d1.y * d1.y + d1.z * d1.z;
     d1_dot_d2 = d1.x * d2.x + d1.y * d2.y + d1.z * d2.z;
+#endif
 
     scale = -d1_dot_d2 / d1_dot_d1;
     if (scale > 1.0) {
@@ -381,12 +403,22 @@ float lbColl_80005EBC(const Vec3* arg0, const Vec3* arg1, const Vec3* arg2,
         scale = 0.0F;
     }
 
+#if defined(PORT) || defined(LINT)
+    x = LC_MADD(d1.x, scale, sp50.x) - arg2->x;
+    y = LC_MADD(d1.y, scale, sp50.y) - arg2->y;
+    z = LC_MADD(d1.z, scale, sp50.z) - arg2->z;
+#else
     x = d1.x * scale + sp50.x - arg2->x;
     y = d1.y * scale + sp50.y - arg2->y;
     z = d1.z * scale + sp50.z - arg2->z;
+#endif
 
     *arg3 = scale;
+#if defined(PORT) || defined(LINT)
+    return LC_MADD(z, z, LC_MADD(x, x, y * y));
+#else
     return x * x + y * y + z * z;
+#endif
 }
 
 float lbColl_80005FC0(Vec3* arg0, Vec3* arg1, Vec3* arg2, float* arg3)
@@ -433,7 +465,7 @@ static inline bool end(Vec3* a, Vec3* b, float unk_sum)
     float y = a->y - b->y;
     float z = a->z - b->z;
 
-    if (unk_sum * unk_sum < z * z + (x * x + y * y)) {
+    if (unk_sum * unk_sum < LC_MADD(z, z, LC_MADD(x, x, y * y))) {
         return false;
     }
 
@@ -610,21 +642,23 @@ bool lbColl_80006094(Vec3* arg0, Vec3* arg1, Vec3* arg2, Vec3* arg3,
                         }
                         d2_z = arg3_z - arg5_offset.z;
                         offset_delta_x = arg4_offset.x - arg5_offset.x;
-                        d1_len_sq =
-                            (d1_z * d1_z) + ((d1_x * d1_x) + (d1_y * d1_y));
-                        d2_len_sq =
-                            (d2_z * d2_z) + ((d2_x * d2_x) + (d2_y * d2_y));
-                        d1_dot_d2 =
-                            (d1_z * d2_z) + ((d1_x * d2_x) + (d1_y * d2_y));
+                        d1_len_sq = LC_MADD(d1_z, d1_z,
+                                            LC_MADD(d1_x, d1_x, d1_y * d1_y));
+                        d2_len_sq = LC_MADD(d2_z, d2_z,
+                                            LC_MADD(d2_x, d2_x, d2_y * d2_y));
+                        d1_dot_d2 = LC_MADD(d1_z, d2_z,
+                                            LC_MADD(d1_x, d2_x, d1_y * d2_y));
                         offset_delta_z = arg4_offset.z - arg5_offset.z;
-                        d2_dot_offset_delta = (d2_z * offset_delta_z) +
-                                              ((d2_x * offset_delta_x) +
-                                               (d2_y * offset_delta_y));
-                        d1_dot_offset_delta = (d1_z * offset_delta_z) +
-                                              ((d1_x * offset_delta_x) +
-                                               (d1_y * offset_delta_y));
-                        denom =
-                            (d1_len_sq * d2_len_sq) - (d1_dot_d2 * d1_dot_d2);
+                        d2_dot_offset_delta =
+                            LC_MADD(d2_z, offset_delta_z,
+                                    LC_MADD(d2_x, offset_delta_x,
+                                            d2_y * offset_delta_y));
+                        d1_dot_offset_delta =
+                            LC_MADD(d1_z, offset_delta_z,
+                                    LC_MADD(d1_x, offset_delta_x,
+                                            d1_y * offset_delta_y));
+                        denom = LC_MSUB(d1_len_sq, d2_len_sq,
+                                        d1_dot_d2 * d1_dot_d2);
 
                         {
                             float arg5_scl;
@@ -654,23 +688,25 @@ bool lbColl_80006094(Vec3* arg0, Vec3* arg1, Vec3* arg2, Vec3* arg3,
                                     float arg1_mid_x;
                                     float arg1_mid_y;
 
-                                    mid.y = 0.5 * d2_y + arg5_offset.y;
-                                    mid.x = 0.5 * d2_x + arg5_offset.x;
+                                    mid.y = LC_MADD_D(0.5, d2_y, arg5_offset.y);
+                                    mid.x = LC_MADD_D(0.5, d2_x, arg5_offset.x);
                                     arg4_mid_y = arg4_offset.y - mid.y;
                                     arg1_mid_y = arg1->y - mid.y;
-                                    mid.z = 0.5 * d2_z + arg5_offset.z;
+                                    mid.z = LC_MADD_D(0.5, d2_z, arg5_offset.z);
                                     arg4_mid_x = arg4_offset.x - mid.x;
                                     arg1_mid_x = arg1_x - mid.x;
                                     arg4_offset_z = arg4_offset.z - mid.z;
                                     arg1_mid_z = arg1->z - mid.z;
 
                                     // lhs and rhs each the same inline
-                                    if ((arg4_offset_z * arg4_offset_z +
-                                         ((arg4_mid_x * arg4_mid_x) +
-                                          (arg4_mid_y * arg4_mid_y))) <
-                                        ((arg1_mid_z * arg1_mid_z) +
-                                         ((arg1_mid_x * arg1_mid_x) +
-                                          (arg1_mid_y * arg1_mid_y))))
+                                    if (LC_MADD(arg4_offset_z, arg4_offset_z,
+                                                LC_MADD(arg4_mid_x, arg4_mid_x,
+                                                        arg4_mid_y *
+                                                            arg4_mid_y)) <
+                                        LC_MADD(arg1_mid_z, arg1_mid_z,
+                                                LC_MADD(arg1_mid_x, arg1_mid_x,
+                                                        arg1_mid_y *
+                                                            arg1_mid_y)))
                                     {
                                         float scale;
 
@@ -681,12 +717,14 @@ bool lbColl_80006094(Vec3* arg0, Vec3* arg1, Vec3* arg2, Vec3* arg3,
                                         d1.z = arg3_z - arg2->z;
                                         {
                                             a2 = vec4;
-                                            dot0 = (d1.z * (c3.z - a2.z)) +
-                                                   ((d1.x * (c3.x - a2.x)) +
-                                                    (d1.y * (c3.y - a2.y)));
-                                            scale = -dot0 / ((d1.z * d1.z) +
-                                                             ((d1.x * d1.x) +
-                                                              (d1.y * d1.y)));
+                                            dot0 = LC_MADD(
+                                                d1.z, c3.z - a2.z,
+                                                LC_MADD(d1.x, c3.x - a2.x,
+                                                        d1.y * (c3.y - a2.y)));
+                                            scale = -dot0 /
+                                                    LC_MADD(d1.z, d1.z,
+                                                            LC_MADD(d1.x, d1.x,
+                                                                    d1.y * d1.y));
                                         }
                                         if (scale > 1.0) {
                                             scale = 1.0F;
@@ -704,12 +742,14 @@ bool lbColl_80006094(Vec3* arg0, Vec3* arg1, Vec3* arg2, Vec3* arg3,
                                             float scale;
 
                                             b0 = *arg1;
-                                            dot1 = (d2.z * (c2.z - b0.z)) +
-                                                   ((d2.x * (c2.x - b0.x)) +
-                                                    (d2.y * (c2.y - b0.y)));
-                                            scale = -dot1 / ((d2.z * d2.z) +
-                                                             ((d2.x * d2.x) +
-                                                              (d2.y * d2.y)));
+                                            dot1 = LC_MADD(
+                                                d2.z, c2.z - b0.z,
+                                                LC_MADD(d2.x, c2.x - b0.x,
+                                                        d2.y * (c2.y - b0.y)));
+                                            scale = -dot1 /
+                                                    LC_MADD(d2.z, d2.z,
+                                                            LC_MADD(d2.x, d2.x,
+                                                                    d2.y * d2.y));
 
                                             if (scale > 1.0) {
                                                 scale = 1.0F;
@@ -722,12 +762,14 @@ bool lbColl_80006094(Vec3* arg0, Vec3* arg1, Vec3* arg2, Vec3* arg3,
                                     }
                                 } else {
                                     arg4_scl =
-                                        ((d1_dot_d2 * d2_dot_offset_delta) -
-                                         (d2_len_sq * d1_dot_offset_delta)) /
+                                        LC_MSUB(d1_dot_d2, d2_dot_offset_delta,
+                                                d2_len_sq *
+                                                    d1_dot_offset_delta) /
                                         denom;
                                     arg5_scl =
-                                        ((d1_len_sq * d2_dot_offset_delta) -
-                                         (d1_dot_d2 * d1_dot_offset_delta)) /
+                                        LC_MSUB(d1_len_sq, d2_dot_offset_delta,
+                                                d1_dot_d2 *
+                                                    d1_dot_offset_delta) /
                                         denom;
                                     if (arg4_scl > 1.0 || arg4_scl < 0.0 ||
                                         arg5_scl > 1.0 || arg5_scl < 0.0)
@@ -780,13 +822,13 @@ bool lbColl_80006094(Vec3* arg0, Vec3* arg1, Vec3* arg2, Vec3* arg3,
                                 }
                             }
 
-                            arg4->x = d1_x * arg4_scl + arg4_offset.x;
-                            arg4->y = d1_y * arg4_scl + arg4_offset.y;
-                            arg4->z = d1_z * arg4_scl + arg4_offset.z;
+                            arg4->x = LC_MADD(d1_x, arg4_scl, arg4_offset.x);
+                            arg4->y = LC_MADD(d1_y, arg4_scl, arg4_offset.y);
+                            arg4->z = LC_MADD(d1_z, arg4_scl, arg4_offset.z);
 
-                            arg5->x = d2_x * arg5_scl + arg5_offset.x;
-                            arg5->y = d2_y * arg5_scl + arg5_offset.y;
-                            arg5->z = d2_z * arg5_scl + arg5_offset.z;
+                            arg5->x = LC_MADD(d2_x, arg5_scl, arg5_offset.x);
+                            arg5->y = LC_MADD(d2_y, arg5_scl, arg5_offset.y);
+                            arg5->z = LC_MADD(d2_z, arg5_scl, arg5_offset.z);
                         }
                     }
                     return end(arg4, arg5, unk_sum);
@@ -1451,6 +1493,31 @@ static inline float sqrDistance(Vec3* a, Vec3* b)
     return x * x + y * y + z * z;
 }
 
+#ifdef PORT
+// PORT: the caller's slot is not written. One call below passes
+// `sqrt_tmp - 1`, outside the array, to reproduce the slot MWCC spilled into
+// under it; on the host that is whichever local clang put there, and in
+// lbColl_800077A0() it is the vector normalised into `e`, so the returned
+// angle is wrong. The arithmetic stays MSL's sqrtf on Gekko, an frsqrte
+// estimate refined three times, and the store moves to a local of the same
+// type, so the round to f32 happens where it did. See
+// docs/design/verification.md, "Stack slots below an array".
+static inline float sqrtf_store(float x, volatile float* y)
+{
+    volatile float slot;
+
+    (void) y;
+    if (x > 0.0f) {
+        double guess = __frsqrte((double) x);
+        guess = 0.5 * guess * (3.0 - guess * guess * x);
+        guess = 0.5 * guess * (3.0 - guess * guess * x);
+        guess = 0.5 * guess * (3.0 - guess * guess * x);
+        slot = (float) (x * guess);
+        return slot;
+    }
+    return x;
+}
+#else
 static inline float sqrtf_store(float x, volatile float* y)
 {
     if (x > 0.0f) {
@@ -1463,6 +1530,7 @@ static inline float sqrtf_store(float x, volatile float* y)
     }
     return x;
 }
+#endif
 
 void lbColl_800077A0(Vec3* a, MtxPtr arg1, Vec3* b, Vec3* c, Vec3* d, Vec3* e,
                      float* angle, float x, float dist_offset)

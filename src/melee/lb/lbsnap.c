@@ -12,6 +12,9 @@
 #include <MetroTRK/intrinsics.h>
 #endif
 #include <dolphin/card.h>
+#ifdef PORT
+#include <port/reached.h>
+#endif
 #include <dolphin/os.h>
 #include <melee/ft/ft_0877.h>
 #include <melee/gm/gm_unsplit.h>
@@ -241,6 +244,26 @@ static inline u8* lbSnap_GetMemSnapIconData(void)
 #pragma push
 #pragma global_optimizer off
 #endif
+#ifdef PORT
+// PORT: the photo is GX RGB565 and the banner GX RGB5A3, both big-endian
+// halfwords: the photo as the copy wrote it, the banner as the card and the
+// texture unit read it. Each texel is read and written as its two bytes.
+static inline u16 lbSnap_Read16(const u8* p)
+{
+    return (u16) ((p[0] << 8) | p[1]);
+}
+static inline void lbSnap_Write16(u8* p, u16 v)
+{
+    p[0] = (u8) (v >> 8);
+    p[1] = (u8) v;
+}
+#define LBSNAP_READ16(p) lbSnap_Read16(p)
+#define LBSNAP_WRITE16(p, v) lbSnap_Write16((p), (v))
+#else
+#define LBSNAP_READ16(p) (*(u16*) (p))
+#define LBSNAP_WRITE16(p, v) (*(u16*) (p) = (v))
+#endif
+
 // Scale the 448x204 snapshot region to 64x32, centered in the 96x32 banner.
 void lbSnap_8001DA5C(const u8* src)
 {
@@ -286,7 +309,7 @@ void lbSnap_8001DA5C(const u8* src)
             offset =
                 offset_base + ((src_column_in_tile = pixel_column % 4) << 1);
             pixel_column = column + 16;
-            rgb565 = *(u16*) &src[offset];
+            rgb565 = LBSNAP_READ16(&src[offset]);
             rgb5a3 = rgb565 & RGB5A3_MASK_B;
             offset_base = pixel_column / 4;
             offset = pixel_column % 4;
@@ -305,18 +328,18 @@ void lbSnap_8001DA5C(const u8* src)
             offset_base += dst_tile_row;
             src_tile += src_tile_row;
             offset = (offset_base << 5) + (offset << 1);
-            *(u16*) &dst_row[offset] = rgb5a3;
+            LBSNAP_WRITE16(&dst_row[offset], rgb5a3);
             pixel_column = column + 17;
             offset_base = src_tile << 5;
             offset = src_row_in_tile << 3;
             offset_base += offset;
             offset = offset_base + (src_column_in_tile << 1);
-            rgb565 = *(u16*) &src[offset];
+            rgb565 = LBSNAP_READ16(&src[offset]);
             offset_base = pixel_column / 4;
             offset_base += dst_tile_row;
             rgb5a3 = RGB565_TO_RGB5A3(rgb565);
             offset = (offset_base << 5) + ((pixel_column % 4) << 1);
-            *(u16*) &dst_row[offset] = rgb5a3;
+            LBSNAP_WRITE16(&dst_row[offset], rgb5a3);
             src_column_accum += 448;
             column += 2;
         }
@@ -375,6 +398,11 @@ int lbSnap_8001DE8C(void* arg0)
             ret = 1;
         }
     }
+#ifdef PORT
+    // PORT: observation only. Whether a snapshot decoded goes in the run's
+    // reached list, which tools/run/card_check.py reads.
+    port_reached(ret ? "snapdecode:ok" : "snapdecode:failed");
+#endif
     return ret;
 }
 

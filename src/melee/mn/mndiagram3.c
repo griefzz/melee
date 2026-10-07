@@ -40,10 +40,40 @@ typedef struct mnDiagram3_DataTable {
     /* 0x3C */ mnDiagram3_StatTable stats;
 } mnDiagram3_DataTable;
 
+#ifdef PORT
+// PORT: the four tables below are read as one mnDiagram3_DataTable
+// (`(mnDiagram3_DataTable*) &mnDiagram3_803EEC10`, and as bytes from the
+// same base in mnDiagram3_HandleInput()), which is exact on the console
+// because the linker laid them end to end. They hold floats and halfwords,
+// so the layout is the same on both; one object, with the four names mapped
+// onto its parts.
+static mnDiagram3_DataTable port_mnDiagram3_data = {
+    { 10.0F, 19.0F, -0.1F },
+    { 0.0F, 199.0F, 0.0F },
+    {
+        { 3.3F, 0.5F, 0.0F },
+        { -2.0F, 0.57F, 0.0F },
+        { 8.0F, 0.57F, 0.0F },
+    },
+    {
+        { 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C,
+          0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
+          0x78, 0x79 },
+        { 0x7A, 0x7A, 0x7A, 0x7C, 0x7C, 0x7C, 0x7C, 0x7C, 0x7A, 0x7A, 0x7A,
+          0xFFFF, 0x7C, 0x7B, 0x7E, 0x7E, 0x7E, 0x7E, 0x7D, 0x7D, 0x7D, 0x7B,
+          0x7B, 0x7B },
+    },
+};
+#define mnDiagram3_803EEC10 (port_mnDiagram3_data.x0)
+#define mnDiagram3_803EEC1C (port_mnDiagram3_data.xC)
+#define mnDiagram3_803EEC28 (port_mnDiagram3_data.positions)
+#define mnDiagram3_803EEC4C (port_mnDiagram3_data.stats)
+#else
 /* 3EEC10 */ extern AnimLoopSettings mnDiagram3_803EEC10;
 /* 3EEC1C */ extern AnimLoopSettings mnDiagram3_803EEC1C;
 /* 3EEC28 */ extern mnDiagram3_PosTable mnDiagram3_803EEC28;
 /* 3EEC4C */ extern mnDiagram3_StatTable mnDiagram3_803EEC4C;
+#endif
 /* 4D6C20 */ extern HSD_GObj* mnDiagram3_804D6C20;
 /* 4D4B64 */ extern GXColor mn_804D4B64;
 
@@ -473,6 +503,7 @@ void mnDiagram3_HandleInput(HSD_GObj* gobj)
     }
 }
 
+#ifndef PORT
 AnimLoopSettings mnDiagram3_803EEC10 = { 10.0F, 19.0F, -0.1F };
 AnimLoopSettings mnDiagram3_803EEC1C = { 0.0F, 199.0F, 0.0F };
 
@@ -488,6 +519,7 @@ mnDiagram3_StatTable mnDiagram3_803EEC4C = {
     { 0x7A, 0x7A, 0x7A, 0x7C, 0x7C, 0x7C, 0x7C, 0x7C, 0x7A, 0x7A, 0x7A, 0xFFFF,
       0x7C, 0x7B, 0x7E, 0x7E, 0x7E, 0x7E, 0x7D, 0x7D, 0x7D, 0x7B, 0x7B, 0x7B },
 };
+#endif
 
 void mnDiagram3_UpdateScrollArrows(HSD_GObj* gobj)
 {

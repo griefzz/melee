@@ -17,7 +17,12 @@
 
 static HSD_GObj* mnHyaku_804D6C58;
 
+#ifdef PORT
+// PORT: gm/gm_1601.h's signature; the call below passes the menu's port.
+void gm_801677E8(s8 arg0);
+#else
 void gm_801677E8(void);
+#endif
 
 static AnimLoopSettings mnHyaku_803EF668 = { 0.0f, 19.0f, -0.1f };
 static AnimLoopSettings mnHyaku_803EF674 = { 20.0f, 29.0f, -0.1f };
@@ -70,8 +75,14 @@ void mnHyaku_8024C68C(HSD_GObj* arg0)
     }
     if (events & MenuInput_Confirm) {
         sfxForward();
+#ifdef PORT
+        // PORT: the console's prototype drops gm_801677E8()'s port argument,
+        // and r3 still holds this return value when it is called.
+        gm_801677E8(mn_802295AC());
+#else
         mn_802295AC();
         gm_801677E8();
+#endif
         // load the different multi-man melee modes
         switch (menu->cursor) {
         case 0:

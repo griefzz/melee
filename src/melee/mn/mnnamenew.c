@@ -68,7 +68,16 @@ extern StaticModelDesc mnNameNew_804A06F0;
 extern StaticModelDesc mnNameNew_804A0700;
 extern StaticModelDesc mnNameNew_804A0710;
 extern StaticModelDesc mnNameNew_804A0720[2];
+#ifdef PORT
+// PORT: eight characters of three bytes, for the name_entry_length hook,
+// which lengthens a name: Slippi's connect codes are eight characters and it
+// writes them here, past the end of the console's sixteen bytes, and its
+// search reads nine slots. The unmodded game uses the first twelve bytes
+// either way.
+char mnNameNew_CurrentNameText[0x20];
+#else
 char mnNameNew_CurrentNameText[0x10];
+#endif
 extern u8 mnNameNew_804D4F7C[8];
 HSD_GObj* mnNameNew_804D6C08;
 
@@ -222,6 +231,54 @@ static MnNameNewGlyphTable mnNameNew_GlyphTable = {
 Vec3 unk_vec = { -0.8f, 0.4f, 0.0f };
 static Vec3 mnNameNew_803EE330 = { -0.7f, 0.7f, 0.0f };
 
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+
+// PORT: one object, as the console's link laid these out. This file reads
+// the animation table, the key map, the glyph table and the two vectors
+// after them through `(MnNameNewDataLayout*) mnNameNew_803EDA58`; here they
+// are separate statics in whatever order the linker chose, and key labels
+// and glyphs would come from the wrong table. Assembled once, on first use.
+// Nothing writes the pieces afterwards; the name_entry_keys hook changes the
+// keys here, where every reader looks.
+static MnNameNewDataLayout mnNameNew_Layout;
+
+static MnNameNewDataLayout* mnNameNew_GetLayout(void)
+{
+    static int built;
+    int i, j;
+
+    if (!built) {
+        built = 1;
+        for (i = 0; i < 3; i++) {
+            mnNameNew_Layout.anim[i] = mnNameNew_803EDA58[i];
+        }
+        for (i = 0; i < 8; i++) {
+            mnNameNew_Layout.key_jobj_ids[i] = mnNameNew_KeyMap.key_jobj_ids[i];
+        }
+        for (i = 0; i < 50; i++) {
+            mnNameNew_Layout.x34[i] = (char*) mnNameNew_KeyMap.x34[i];
+            mnNameNew_Layout.xFC[i] = (char*) mnNameNew_KeyMap.xFC[i];
+            mnNameNew_Layout.character_bytes[i] =
+                (char*) mnNameNew_KeyMap.character_bytes[i];
+            for (j = 0; j < 4; j++) {
+                mnNameNew_Layout.lower_glyphs[i][j] =
+                    (char*) mnNameNew_GlyphTable.lower_glyphs[i][j];
+                mnNameNew_Layout.upper_glyphs[i][j] =
+                    (char*) mnNameNew_GlyphTable.upper_glyphs[i][j];
+            }
+        }
+        mnNameNew_Layout.x8CC = unk_vec;
+        mnNameNew_Layout.x8D8 = mnNameNew_803EE330;
+        port_hook_name_entry_keys(mnNameNew_Layout.character_bytes);
+    }
+    return &mnNameNew_Layout;
+}
+#define MNNAMENEW_LAYOUT() mnNameNew_GetLayout()
+#else
+#define MNNAMENEW_LAYOUT() ((MnNameNewDataLayout*) mnNameNew_803EDA58)
+#endif
+
 void mnNameNew_8023B0F8(HSD_GObj* arg0, u8 arg1)
 {
     HSD_JObj* jobj;
@@ -316,7 +373,14 @@ void mnNameNew_8023B314(NameNewEntry* arg0, s32 arg1)
         }
     }
     text = arg0->desc_text;
+#ifdef PORT
+    // PORT: the name_entry_description hook, for Slippi's
+    // HandleDescriptionText.
+    idx = (u8) port_hook_name_entry_description(
+        mnNameNew_804D4F7C[selection - 0x32]);
+#else
     idx = mnNameNew_804D4F7C[selection - 0x32];
+#endif
     if (text != NULL) {
         if (text->sis_buffer == HSD_SisLib_804D1124[0][idx]) {
             return;
@@ -377,7 +441,7 @@ HSD_Text* mnNameNew_KeySetup(NameNewEntry* arg0, u8 arg1)
 
     PAD_STACK(16);
 
-    layout = (MnNameNewDataLayout*) mnNameNew_803EDA58;
+    layout = MNNAMENEW_LAYOUT();
     key_color = mnNameNew_804DBF44;
     selected_key_color = mnNameNew_804DBF48;
 
@@ -727,7 +791,7 @@ char* AddCharacterToName(char* arg0, u8 arg1, u8 arg2, u8 arg3)
     char** table;
     MnNameNewDataLayout* layout;
 
-    layout = (MnNameNewDataLayout*) mnNameNew_803EDA58;
+    layout = MNNAMENEW_LAYOUT();
     switch (arg3) {
     case 0:
     case 1: {
@@ -797,11 +861,23 @@ void mnNameNew_GlyphVariantInput(HSD_GObj* gobj)
         cur_pos = data->cursor_pos;
         old_hover = mn_804A04F0.hovered_selection;
         count = (s32) old_hover;
+#ifdef PORT
+        // PORT: the name_entry_length hook, for Slippi's
+        // Allow8CharactersJapanese.
+        if (cur_pos < (u8) (port_hook_name_entry_length(4) - 1)) {
+#else
         if (cur_pos < 3U) {
+#endif
             data->cursor_pos = (u8) (cur_pos + 1);
         } else {
             mn_804A04F0.hovered_selection = 0x39;
         }
+#ifdef PORT
+        // PORT: the name_entry_text_changed hook, for Slippi's
+        // OnEnterJpText, which is OnEnterText for a kana variant.
+        port_hook_name_entry_text_changed(0, mnNameNew_CurrentNameText,
+                                          &data->cursor_pos);
+#endif
         mnNameNew_8023CE4C();
         if (((count != 0x30) && (count != 0x31)) &&
             ((mn_804A04F0.confirmed_selection % 2) != 0))
@@ -959,7 +1035,7 @@ void mnNameNew_MainInput(HSD_GObj* arg0)
         NameNewEntry* entry = mnNameNew_804D6C08->user_data;
         data = entry;
     }
-    layout = (MnNameNewDataLayout*) mnNameNew_803EDA58;
+    layout = MNNAMENEW_LAYOUT();
 
     if (data->variant_gobj != NULL) {
         mnNameNew_GlyphVariantInput(arg0);
@@ -967,6 +1043,12 @@ void mnNameNew_MainInput(HSD_GObj* arg0)
     }
 
     buttons = (mn_804A04F0.buttons = mn_80229624((u32) mnNameNew_PortInUse));
+#ifdef PORT
+    // PORT: the name_entry_input hook: Slippi's autocomplete takes L, R, Z
+    // and B.
+    buttons = port_hook_name_entry_input(buttons, mnNameNew_CurrentNameText,
+                                         &data->cursor_pos);
+#endif
     n = 0;
 
     if (buttons & 0x200) {
@@ -1000,11 +1082,24 @@ void mnNameNew_MainInput(HSD_GObj* arg0)
                 mnNameNew_CurrentNameText[cursor * 3 + 2] =
                     *((GlyphChar*) mnNameNew_NullCharacter);
                 lbAudioAx_80024030(1);
+#ifdef PORT
+                // PORT: Slippi's HandleJpSpace.asm (+0x174), `b 0x4C`: the
+                // space goes on through the key path below, with its length
+                // and its text-changed hook.
+                if (data->cursor_pos < port_hook_name_entry_length(4) - 1) {
+                    data->cursor_pos = (u8) (data->cursor_pos + 1);
+                } else {
+                    *hovered = 0x39;
+                }
+                port_hook_name_entry_text_changed(0, mnNameNew_CurrentNameText,
+                                                  &data->cursor_pos);
+#else
                 if (data->cursor_pos < 3) {
                     data->cursor_pos = (u8) (data->cursor_pos + 1);
                 } else {
                     *hovered = 0x39;
                 }
+#endif
                 mnNameNew_8023CE4C();
                 return;
             }
@@ -1012,11 +1107,23 @@ void mnNameNew_MainInput(HSD_GObj* arg0)
                 &mnNameNew_CurrentNameText[data->cursor_pos * 3], sel, 0U,
                 data->mode);
             lbAudioAx_80024030(1);
+#ifdef PORT
+            // PORT: the name_entry_length hook, for Slippi's
+            // Allow8Characters.
+            if (data->cursor_pos < port_hook_name_entry_length(4) - 1) {
+#else
             if (data->cursor_pos < 3) {
+#endif
                 data->cursor_pos = (u8) (data->cursor_pos + 1);
             } else {
                 *hovered = 0x39;
             }
+#ifdef PORT
+            // PORT: the name_entry_text_changed hook, for Slippi's
+            // OnEnterText.
+            port_hook_name_entry_text_changed(0, mnNameNew_CurrentNameText,
+                                              &data->cursor_pos);
+#endif
             mnNameNew_8023CE4C();
             return;
         } else {
@@ -1109,11 +1216,32 @@ void mnNameNew_MainInput(HSD_GObj* arg0)
                 } else {
                     data->cursor_pos = (u8) n;
                 }
+#ifdef PORT
+                // PORT: the name_entry_text_changed hook, for
+                // OnRandomPress.
+                port_hook_name_entry_text_changed(
+                    1, mnNameNew_CurrentNameText, &data->cursor_pos);
+#endif
                 mnNameNew_8023CE4C();
                 return;
 
             case 0x38:
             case 0x39:
+#ifdef PORT
+                // PORT: the name_entry_confirmed hook; see the Start path
+                // below.
+                {
+                    int answer = port_hook_name_entry_confirmed(
+                        -1, mnNameNew_CurrentNameText);
+
+                    if (answer >= 0) {
+                        if (answer != 0) {
+                            mnNameNew_8023B224(1U);
+                        }
+                        return;
+                    }
+                }
+#endif
                 copyName(mnNameNew_CurrentNameText, name_buffer);
                 SubmitName(data, name_buffer);
                 return;
@@ -1123,6 +1251,22 @@ void mnNameNew_MainInput(HSD_GObj* arg0)
         if (mn_804A04F0.hovered_selection == 0x38 ||
             mn_804A04F0.hovered_selection == 0x39)
         {
+#ifdef PORT
+            // PORT: the name_entry_confirmed hook, for Slippi's
+            // OnConfirmButtonHandler (+0x6C8, and OnConfirmButtonAPress
+            // branching to it), which replaces the nametag checks and save.
+            {
+                int answer = port_hook_name_entry_confirmed(
+                    -1, mnNameNew_CurrentNameText);
+
+                if (answer >= 0) {
+                    if (answer != 0) {
+                        mnNameNew_8023B224(1U);
+                    }
+                    return;
+                }
+            }
+#endif
             copyName(mnNameNew_CurrentNameText, name_buffer);
             SubmitName(data, name_buffer);
             return;
@@ -1243,7 +1387,12 @@ void mnNameNew_8023CE4C(void)
     text->font_size.x = 0.04f;
     text->font_size.y = 0.05f;
     text->text_color = mnNameNew_804D4F6C;
+#ifdef PORT
+    // PORT: the name_entry_length hook, for Slippi's Display8Characters.
+    for (; i < port_hook_name_entry_length(4); i++) {
+#else
     for (; i < 4; i++) {
+#endif
         if ((s8) *mnNameNew_NullCharacter ==
             (s8) mnNameNew_CurrentNameText[i * 3])
         {
@@ -1252,6 +1401,10 @@ void mnNameNew_8023CE4C(void)
         HSD_SisLib_803A6B98(text, (char_spacing * (f32) i) / text->font_size.x,
                             0.0f, &mnNameNew_CurrentNameText[i * 3]);
         name_char_color = mnNameNew_804D4F78;
+#ifdef PORT
+        // PORT: the name_entry_char_color hook, for HandleAutocompleteText.
+        port_hook_name_entry_char_color((unsigned char*) &name_char_color, i);
+#endif
         HSD_SisLib_803A74F0(text, i, name_char_color_ptr[0]);
     }
     data->name_disp_text = text;
@@ -1348,7 +1501,7 @@ HSD_Text* mnNameNew_8023D130(GlyphVariantEntry* arg0, u16 arg1, u8 arg2,
     Vec3 text_pos;
     GXColor glyph_color;
 
-    layout = (MnNameNewDataLayout*) mnNameNew_803EDA58;
+    layout = MNNAMENEW_LAYOUT();
     text = HSD_SisLib_803A6754(0, (s32) mn_804D6BB4);
     jobj14 = arg0->jobjs[4];
     jobj18 = arg0->jobjs[5];
@@ -1556,7 +1709,7 @@ void fn_8023DAEC(HSD_GObj* arg0)
 
     PAD_STACK(8);
 
-    layout = (MnNameNewDataLayout*) mnNameNew_803EDA58;
+    layout = MNNAMENEW_LAYOUT();
     if ((data = arg0->user_data)->key_text != NULL) {
         HSD_SisLib_803A5CC4(data->key_text);
         data->key_text = NULL;
@@ -1706,7 +1859,7 @@ void mnNameNew_8023E0D8(NameNewEntry* arg0)
     u16* jobj_ids;
     s32 i;
 
-    layout = (MnNameNewDataLayout*) mnNameNew_803EDA58;
+    layout = MNNAMENEW_LAYOUT();
     anim = layout->anim;
     jobj = arg0->jobjs[12];
     HSD_JObjReqAnim(jobj, anim[2].start_frame);
@@ -1755,7 +1908,13 @@ s32 InitNameEntryUIState(NameNewEntry* arg0, s32 arg1)
     PAD_STACK(20);
 
     arg0->x1 = (count = (u8) mn_804A04F0.hovered_selection);
+#ifdef PORT
+    // PORT: the name_entry_force_english hook, for Slippi's
+    // AlwaysUseEnglishWhenDirect3.
+    result = lbLang_IsSavedLanguageUS() || port_hook_name_entry_force_english();
+#else
     result = lbLang_IsSavedLanguageUS();
+#endif
     if (result) {
         arg0->mode = 2;
     } else {
@@ -1882,7 +2041,13 @@ void mnNameNew_EnterFromMnCharSel(HSD_Archive* arg0, s32 arg1)
     mn_804A04F0.prev_menu = mn_804A04F0.cur_menu;
     mn_804A04F0.cur_menu = 0x12;
 
+#ifdef PORT
+    // PORT: the name_entry_force_english hook, for Slippi's
+    // AlwaysUseEnglishWhenDirect (+0x60).
+    if (lbLang_IsSavedLanguageUS() || port_hook_name_entry_force_english()) {
+#else
     if (lbLang_IsSavedLanguageUS()) {
+#endif
         mn_804A04F0.hovered_selection = 0x2D;
     } else {
         mn_804A04F0.hovered_selection = 0;
@@ -1942,7 +2107,13 @@ void mnNameNew_EnterFromMnCharSel(HSD_Archive* arg0, s32 arg1)
 
         NULL);
 
+#ifdef PORT
+    // PORT: the name_entry_force_english hook, for Slippi's
+    // AlwaysUseEnglishWhenDirect2 (+0x254).
+    is_us = lbLang_IsSavedLanguageUS() || port_hook_name_entry_force_english();
+#else
     is_us = lbLang_IsSavedLanguageUS();
+#endif
 
     if (is_us) {
         lbArchive_LoadSections(arg0, &AutoNamesList, "mnNameAutoNameUs",
@@ -1969,9 +2140,21 @@ void mnNameNew_EnterFromMnCharSel(HSD_Archive* arg0, s32 arg1)
     text[3] = *mnNameNew_NullCharacter;
     text[6] = *mnNameNew_NullCharacter;
     text[9] = *mnNameNew_NullCharacter;
+#ifdef PORT
+    // PORT: the slots name_entry_length can add (mnNameNew_CurrentNameText).
+    text[12] = *mnNameNew_NullCharacter;
+    text[15] = *mnNameNew_NullCharacter;
+    text[18] = *mnNameNew_NullCharacter;
+    text[21] = *mnNameNew_NullCharacter;
+    text[24] = *mnNameNew_NullCharacter;
+#endif
 
     mnNameNew_8023E32C((s32) name_count);
     lbAudioAx_80023F28(gmMainLib_8015ECB0());
+#ifdef PORT
+    // PORT: the name_entry_entered hook, for Slippi's InitNameEntry.
+    port_hook_name_entry_entered();
+#endif
 }
 
 void mnNameNew_8023EA08(UNK_T arg0)

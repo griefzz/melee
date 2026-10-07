@@ -1,6 +1,11 @@
 #include "lbmthp.h"
 
 #include <placeholder.h>
+#ifdef PORT
+#include <port/aram.h>  // port_arq_pump()
+#include <port/dvd.h>   // port_dvd_pump()
+#include <port/video.h> // the MTH header's byte order
+#endif
 
 #include "lbfile.h"
 #include <dolphin/dvd.h>
@@ -90,7 +95,15 @@ typedef struct THPDecComp {
 } THPDecComp;
 
 /* 01F294 */ static s32 fn_8001F294(void);
+#ifdef PORT
+// PORT: the THP header is read by DMA straight into this static, and
+// HSD_DevComRequest() (baselib/devcom.c) asserts `dest % 32 == 0`. The
+// console's linker placed it at 0x804333E0, which is 32-byte aligned; clang
+// has no reason to, so the alignment is stated.
+/* 4333E0 */ static THPDecComp MoviePlayer ATTRIBUTE_ALIGN(32);
+#else
 /* 4333E0 */ static THPDecComp MoviePlayer;
+#endif
 
 static void fn_8001E910(int arg0, uintptr_t arg1, void* arg2, bool cancelflag)
 {
@@ -117,8 +130,16 @@ static void fn_8001E910(int arg0, uintptr_t arg1, void* arg2, bool cancelflag)
     } else {
         var_r0 = streamPlayer->unk_8C - 1;
     }
+#ifdef PORT
+    // PORT: the word in front of a packed frame is big-endian, and the rest
+    // of the buffer is the JPEG, so the word is read rather than swapped in
+    // place.
+    streamPlayer->currPackedSize = PORT_VIDEO_BE32(
+        streamPlayer->frame_buffers[var_r0]->next_packed_size);
+#else
     streamPlayer->currPackedSize =
         streamPlayer->frame_buffers[var_r0]->next_packed_size;
+#endif
     if (streamPlayer->unk_90 != streamPlayer->unk_8C &&
         streamPlayer->unk_70 != 0)
     {
@@ -167,6 +188,11 @@ static s32 fn_8001EB14(THPDecComp* data, const char* path)
     THPInit();
     data->file_entrynum = DVDConvertPathToEntrynum(path);
     lbFile_800161C4(data->file_entrynum, 0, (uintptr_t) data, 0x40, 0x21, 1);
+#ifdef PORT
+    // PORT: the 0x40-byte header is big-endian and used on the next line;
+    // the read above is synchronous. Swapped by port/data/video_swap.c.
+    port_video_mth_header_loaded(data);
+#endif
 
     data->unk_40 = data->num_frames;
     data->width = data->x_size;
@@ -242,7 +268,13 @@ size_t fn_8001EBF0(THPDecComp* data)
     data->unk_AA = data->height;
     data->unk_AC = 0;
 
+#ifdef PORT
+    // PORT: the frame-pointer table fn_8001ECF4() lays out first in the
+    // buffer, at the host's pointer width; `* 4` is the console's.
+    size += ALIGN_32(data->unk_104 * sizeof(*data->frame_buffers));
+#else
     size += ALIGN_32(data->unk_104 * 4);
+#endif
     size += ALIGN_32(data->unk_40 * 4);
 
     return size;
@@ -266,7 +298,16 @@ static void fn_8001ECF4(THPDecComp* data, void* buf)
     count = data->unk_104;
     data->unk_64 = 0;
     uv_size = (width * height) >> 2U;
+#ifdef PORT
+    // PORT: `buf` begins with the table of frame pointers, and the frames
+    // follow it. `count * 4` is the table at the console's pointer width; the
+    // entries are THPFrameBuffer*, eight bytes here, so at four the table runs
+    // over the first frame's size word and JPEG header. fn_8001EBF0() sizes
+    // the allocation the same way.
+    var_r29 = (u8*) buf + ALIGN_32(count * sizeof(*data->frame_buffers));
+#else
     var_r29 = (u8*) buf + (((count * 4) + 0x1F) & 0xFFFFFFE0);
+#endif
     if ((data->unk_6C != 0) && (data->unk_11C != 0)) {
         var_r24 = data->first_frame_size;
         csizep = (u8*) &data->first_frame_size;
@@ -298,7 +339,12 @@ static void fn_8001ECF4(THPDecComp* data, void* buf)
                             0x21, 1);
             csizep = var_r29;
             data->curr_file_offset += var_r24;
+#ifdef PORT
+            var_r24 = PORT_VIDEO_BE32(
+                ((THPFrameBuffer*) var_r29)->next_packed_size);
+#else
             var_r24 = ((THPFrameBuffer*) var_r29)->next_packed_size;
+#endif
             var_r29 = var_r29 + data->unk_100;
         }
         data->unk_74 = var_r25;
@@ -441,6 +487,16 @@ s32 fn_8001F13C(THPDecComp* streamPlayer)
 #endif
 s32 fn_8001F294(void)
 {
+#ifdef PORT
+    // PORT: lbMthp_8001F800() spins on this until the movie's last disc read
+    // completes, and on the console the DVD interrupt runs fn_8001E910()
+    // inside that loop. The port defers completions to pumps the loop does
+    // not reach, so this pumps, as lbArq_80014ABC() does; a devcom read may
+    // chain an ARQ transfer, so both. See docs/design/sdk.md, "Interrupts
+    // and completions".
+    port_dvd_pump();
+    port_arq_pump();
+#endif
     return MoviePlayer.unk_110;
 }
 #ifdef __MWERKS__

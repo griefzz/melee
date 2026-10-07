@@ -28,6 +28,39 @@
 static GXColor mnDiagram2_804D4FB8 = { 0, 0, 0, 0xFF };
 static GXColor mnDiagram2_804D4FBC = { 0xFF, 0xC8, 0, 0xFF };
 
+#ifdef PORT
+// PORT: mnDiagram2_UpdateScrollArrows() reads the arrow's animation as
+// `((MnDiagram2DataLayout*) &mnDiagram2_803EEAD0)->anim[1]`, which is
+// mnDiagram2_803EEB60[1] only where the linker put the two end to end. They
+// hold floats and halfwords, so the layout is the same on both; one object,
+// with the two names mapped onto its parts.
+static struct {
+    MnDiagram2RowLayout rows;
+    AnimLoopSettings anim[2];
+} port_mnDiagram2_data = {
+    {
+        { -2.5f, 0.3f, 0.0f },
+        { -2.2f, 0.5f, 0.0f },
+        { -1.0f, 0.5f, 0.0f },
+        { -2.0f, 0.0f, 0.0f },
+        {
+            74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85,
+            86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97,
+        },
+        {
+            122, 122, 122, 124,    124,    124,    124, 124,
+            122, 122, 122, 0xFFFF, 124,    123,    126, 126,
+            126, 126, 125, 125,    125,    0xFFFF, 0xFFFF, 0xFFFF,
+        },
+    },
+    {
+        { 10.0f, 19.0f, -0.1f },
+        { 0.0f, 199.0f, 0.0f },
+    },
+};
+#define mnDiagram2_803EEAD0 (port_mnDiagram2_data.rows)
+#define mnDiagram2_803EEB60 (port_mnDiagram2_data.anim)
+#else
 static MnDiagram2RowLayout mnDiagram2_803EEAD0 = {
     { -2.5f, 0.3f, 0.0f },
     { -2.2f, 0.5f, 0.0f },
@@ -47,6 +80,7 @@ static AnimLoopSettings mnDiagram2_803EEB60[2] = {
     { 10.0f, 19.0f, -0.1f },
     { 0.0f, 199.0f, 0.0f },
 };
+#endif
 
 static HSD_GObj* mnDiagram2_804D6C18;
 

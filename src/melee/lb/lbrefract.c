@@ -1,4 +1,7 @@
 #include "lbrefract.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <math.h>
 #include <placeholder.h>
@@ -39,10 +42,23 @@ static struct refract_data_t* refract_data;
 static inline void lbRefract_WriteTexCoord(lbRefract_CallbackData* cb, s32 row,
                                            u32 col, f32 y, f32 x, f32 param0)
 {
+#ifdef PORT
+    // PORT: param0 is clamped only from above and scaled by LbRf.dat's own
+    // factor (lbRefract_80021CE8()), so a negative factor in the file makes
+    // these negative: 0 through the console's conversion, a wrapped
+    // coordinate through the host's. See docs/design/verification.md,
+    // "Floats converted to unsigned".
+    u32 y_tex = port_cvt_fp2unsigned(127.0f * (y * param0) + 128.0f);
+    ((void (*)(lbRefract_CallbackData*, s32, s32, s32, s32, u32,
+               u32)) cb->callback0)(
+        cb, row, col, 0, 0, y_tex,
+        port_cvt_fp2unsigned(127.0f * (x * param0) + 128.0f));
+#else
     u32 y_tex = 127.0f * (y * param0) + 128.0f;
     ((void (*)(lbRefract_CallbackData*, s32, s32, s32, s32, u32,
                u32)) cb->callback0)(cb, row, col, 0, 0, y_tex,
                                     127.0f * (x * param0) + 128.0f);
+#endif
 }
 
 /// @todo reconcile with MSL fmodf
@@ -361,8 +377,10 @@ void lbRefract_800222A4(void)
     /// @todo Refactor data members into a struct
 
     lbRefract_CallbackData cb;
+#ifndef PORT
     struct lbRefract_DataLayout* data =
         (struct lbRefract_DataLayout*) &texture_mtx;
+#endif
     size_t i;
     void* buf;
     PAD_STACK(4);
@@ -385,7 +403,17 @@ void lbRefract_800222A4(void)
         lbRefract_8002219C(&cb, buf, GX_TF_IA8, 32, 32);
         lbRefract_80021CE8(&cb, i);
 
+#ifdef PORT
+        // PORT: `data` casts struct lbRefract_DataLayout over `&texture_mtx`,
+        // which works because the console laid texture_mtx, texture_offset
+        // and imagedesc0 end to end. On the host they are three objects and
+        // HSD_ImageDesc is wider, so `data->imagedesc0` reads past the matrix.
+        // The overlay is used only here, so the static is named directly. See
+        // docs/design/verification.md, "Statics laid end to end".
+        lbl_804336D0.imagedesc[i] = imagedesc0;
+#else
         lbl_804336D0.imagedesc[i] = data->imagedesc0;
+#endif
         tobjdesc1.imagedesc = &lbl_804336D0.imagedesc[i];
         lbl_804336D0.tobj_list[i] = HSD_TObjLoadDesc(&tobjdesc1);
 

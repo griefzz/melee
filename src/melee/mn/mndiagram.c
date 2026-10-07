@@ -57,9 +57,20 @@ typedef struct mnDiagram_PopupAnimTableHead {
     /* 0x00 */ Point3d points[3];
 } mnDiagram_PopupAnimTableHead;
 
+#ifdef PORT
+// PORT: mnDiagram_SortNamesByKOs() writes the name order through
+// `(mnDiagram_Assets*) &mnDiagram_FighterDisplayOrder`, which is the next
+// static only where the linker put them end to end. One object, with the
+// two names mapped onto its parts.
+static mnDiagram_Assets port_mnDiagram_order;
+#define mnDiagram_FighterDisplayOrder (port_mnDiagram_order.sorted_fighters)
+#define mnDiagram_NameDisplayOrder (port_mnDiagram_order.sorted_names)
+#else
 u8 mnDiagram_FighterDisplayOrder[0x1C];
 u8 mnDiagram_NameDisplayOrder[GM_NAMETAG_COUNT];
+#endif
 
+#ifndef PORT
 static mnDiagram_PopupAnimTableHead mnDiagram_PopupTextOffsets = {
     {
         { 4.0F, 1.0F, 0.0F },
@@ -104,6 +115,7 @@ static AnimLoopSettings mnDiagram_IntroAnim = { 0.0f, 9.0f, -0.1f };
 static AnimLoopSettings mnDiagram_PopupExitAnim = { 10.0f, 19.0f, -0.1f };
 static AnimLoopSettings mnDiagram_ArrowAnim = { 0.0f, 199.0f, 0.0f };
 static AnimLoopSettings mnDiagram_CursorAnim = { 0.0f, 10.0f, -0.1f };
+#endif
 
 /// Overlay over the contiguous .data run starting at
 /// mnDiagram_PopupTextOffsets. The compiler addresses a few of these from that
@@ -120,6 +132,36 @@ typedef struct mnDiagram_AnimTable {
     /* 0x64 */ AnimLoopSettings cursor_anim; ///< mnDiagram_CursorAnim
 } mnDiagram_AnimTable;
 
+#ifdef PORT
+// PORT: the popup offsets, the default order and four animation ranges are
+// read as one mnDiagram_AnimTable through GET_DIAGRAM_ANIM_TABLE(), which is
+// exact on the console because the linker laid them end to end. Floats and
+// bytes only, so the layout is the same on both; one object, with the six
+// names as macros onto its parts.
+static mnDiagram_AnimTable port_mnDiagram_anims = {
+    {
+        { 4.0F, 1.0F, 0.0F },
+        { -3.0F, 0.8F, 0.0F },
+        { -1.0F, 0.7F, 0.0F },
+    },
+    {
+        8,    1,    6,    0x10, 0x11, 4,   2,   0xD, 0xB, 0,
+        5,    0xC,  0xE,  0x12, 7,    0xF, 0xA, 9,   3,   0x15,
+        0x18, 0x13, 0x14, 0x17, 0x16, 0,   0,   0,
+    },
+    { 0.0f, 9.0f, -0.1f },
+    { 10.0f, 19.0f, -0.1f },
+    { 0.0f, 199.0f, 0.0f },
+    { 0.0f, 10.0f, -0.1f },
+};
+#define mnDiagram_PopupTextOffsets                                            \
+    (*(mnDiagram_PopupAnimTableHead*) port_mnDiagram_anims.points)
+#define mnDiagram_DefaultFighterOrder (port_mnDiagram_anims.default_fighter_order)
+#define mnDiagram_IntroAnim (port_mnDiagram_anims.intro_anim)
+#define mnDiagram_PopupExitAnim (port_mnDiagram_anims.exit_anim)
+#define mnDiagram_ArrowAnim (port_mnDiagram_anims.arrow_anim)
+#define mnDiagram_CursorAnim (port_mnDiagram_anims.cursor_anim)
+#endif
 #define GET_DIAGRAM_ANIM_TABLE()                                              \
     ((mnDiagram_AnimTable*) &mnDiagram_PopupTextOffsets)
 

@@ -8,6 +8,9 @@
 #include <dolphin/os/OSAlarm.h>
 #include <sysdolphin/baselib/debug.h>
 #include <sysdolphin/baselib/devcom.h>
+#ifdef PORT
+#include <port/hooks.h> // port_hook_heap_block_not_found()
+#endif
 
 struct LBMgr {
     OSAlarm alarm;
@@ -47,7 +50,14 @@ Handle* lbMemory_80014E24(void* arenaLo, void* arenaHi)
     Handle* h;
     HSD_ASSERT(0x7B, _p(free_heap));
 
+#ifdef PORT
+    // PORT: the main-memory boundary is OS_BASE_CACHED, which a sanitizer
+    // build moves (docs/design/build.md, "The memory map").
+    if ((uintptr_t) arenaLo < OS_BASE_CACHED &&
+        (uintptr_t) arenaHi < OS_BASE_CACHED)
+#else
     if ((uintptr_t) arenaLo < 0x80000000U && (uintptr_t) arenaHi < 0x80000000U)
+#endif
     {
 #ifdef MUST_MATCH
         // The retail assert string spells the u32 casts.
@@ -137,6 +147,13 @@ HSD_AllocEntry* lbMemory_80014FC8(Handle* h, size_t size)
         start = (uintptr_t) (*link)->addr + (*link)->size;
         link = &(*link)->next;
     }
+#ifdef PORT
+    // PORT: hook heap_block_not_found, with the heap, the request and what
+    // is in the way, none of which the assert below names.
+    if (memp_kouho == NULL) {
+        port_hook_heap_block_not_found(h, size, _p(num_allocs));
+    }
+#endif
     HSD_ASSERT(0xE9, memp_kouho);
     {
         HSD_AllocEntry* result = _p(free_mem);
@@ -256,7 +273,11 @@ static void lbMemory_80015320(int arg0, uintptr_t arg1, void* arg2,
             block->addr = current;
             _p(compact_cursor) = (uintptr_t) block->addr + block->size;
 
+#ifdef PORT
+            if ((uintptr_t) block->addr < OS_BASE_CACHED) {
+#else
             if ((uintptr_t) block->addr < 0x80000000U) {
+#endif
                 HSD_DevComRequest(0, (uintptr_t) src, (uintptr_t) current,
                                   OSRoundUp32B(block->size), 0x1B, 1,
                                   lbMemory_80015320, (uintptr_t) block->next);

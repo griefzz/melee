@@ -55,6 +55,14 @@ static u8 mnStageSw_stageIcons[NUM_STAGES] = {
     0x1D, 0x17, 0x0F, 0x10, 0x12, 0x13, 0x14, 0x15, 0x1A, 0x1B,
     0x1C, 0x16, 0x18, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24,
 };
+#ifdef PORT
+// PORT: which SdMenu message names a stage, by random-stage id: the table
+// above, which Slippi's InitVsSplash reads by address (0x803ED4E4 + id).
+u8 mnStageSw_StageNameMessage(int id)
+{
+    return id >= 0 && id < NUM_STAGES ? mnStageSw_stageIcons[id] : 0;
+}
+#endif
 
 static f32 mnStageSw_804D4BB8[2] = { 0.0F, 1.0F };
 static HSD_GObj* mnStageSw_804D6BF0;

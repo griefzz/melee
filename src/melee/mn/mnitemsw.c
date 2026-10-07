@@ -36,6 +36,47 @@ struct MnItemSwTable {
     /* 0xF8 */ u8 item_order[32];
 };
 
+#ifdef PORT
+// PORT: mnItemSw_GetTable() reads these three as one MnItemSwTable through
+// `(struct MnItemSwTable*) mnItemSw_803ED340`, which is exact on the console
+// because the linker laid them end to end. Here the first is a 0x30-byte
+// object, and the animation frames and item order past it come from
+// whatever the host put next: the wrong icons, and a saved item mask
+// rewritten as `1 << garbage`. Floats and bytes only, so the layout is the
+// same on both; one object, with the three names as macros onto its parts.
+struct MnItemSwAnimTable {
+    /* 0x00 */ f32 x30[18];
+    /* 0x48 */ f32 items[32];
+};
+
+static struct MnItemSwTable port_mnItemSw_table = {
+    {
+        { 0.0f, 9.0f, -0.1f },
+        { 0.0f, 0.0f, -0.1f },
+        { 0.0f, 0.0f, -0.1f },
+        { 0.0f, 0.0f, -0.1f },
+    },
+    {
+        0.0f, 10.0f, -0.1f, 0.0f, 199.0f, 0.0f, 10.0f, 11.0f, 8.0f,
+        9.0f, 6.0f, 7.0f, 4.0f, 5.0f, 2.0f, 3.0f, 0.0f, 1.0f,
+    },
+    {
+        0.0f,  1.0f,  2.0f,  3.0f,  4.0f,  5.0f,  6.0f,  7.0f,
+        8.0f,  9.0f,  10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f,
+        16.0f, 17.0f, 18.0f, 19.0f, 20.0f, 21.0f, 22.0f, 23.0f,
+        25.0f, 24.0f, 26.0f, 27.0f, 29.0f, 28.0f, 30.0f, 31.0f,
+    },
+    {
+        0x05, 0x12, 0x0A, 0x1E, 0x0D, 0x18, 0x03, 0x0E, 0x17, 0x1B, 0x01,
+        0x09, 0x08, 0x07, 0x15, 0x04, 0x06, 0x02, 0x0F, 0x00, 0x11, 0x0B,
+        0x1F, 0x1A, 0x14, 0x19, 0x10, 0x16, 0x13, 0x1D, 0x0C, 0x00,
+    },
+};
+#define mnItemSw_803ED340 (port_mnItemSw_table.x00)
+#define mnItemSw_AnimTable                                                   \
+    (*(struct MnItemSwAnimTable*) port_mnItemSw_table.x30)
+#define mnItemSw_803ED438 (port_mnItemSw_table.item_order)
+#else
 static f32 mnItemSw_803ED340[4][3] = {
     { 0.0f, 9.0f, -0.1f },
     { 0.0f, 0.0f, -0.1f },
@@ -82,6 +123,7 @@ u8 mnItemSw_803ED438[32] = {
     0x09, 0x08, 0x07, 0x15, 0x04, 0x06, 0x02, 0x0F, 0x00, 0x11, 0x0B,
     0x1F, 0x1A, 0x14, 0x19, 0x10, 0x16, 0x13, 0x1D, 0x0C, 0x00,
 };
+#endif
 
 static f32 mnItemSw_804D4BA0[2] = { 0.0f, 1.0f };
 
@@ -461,7 +503,17 @@ void mnItemSw_8023453C(HSD_GObj* gobj, u8 arg1, u8 arg2)
 
     if (arg1_ != 0) {
         f32 y_spacing;
+#ifdef PORT
+        // PORT: anim_val carries the highlight jobj's frame from the item
+        // the cursor leaves to the one it lands on. Coming from a frequency
+        // row (0x1F or 0x20) the first branch never sets it and the second
+        // requests it anyway, an uninitialised read. x30[3] is what
+        // mnItemSw_80235020() requests on the same joint when it first shows
+        // a hovered item's highlight.
+        f32 anim_val = tbl->x30[3];
+#else
         f32 anim_val;
+#endif
         u8 old_cursor = data->cursor;
 
         if (old_cursor == 0x1F || old_cursor == 0x20) {

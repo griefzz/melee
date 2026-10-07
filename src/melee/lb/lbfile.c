@@ -122,7 +122,13 @@ void lbFile_800164A4(int file, uintptr_t dst, size_t* size, int pri,
 {
     int type;
     *size = lbFile_8001634C(file);
+#ifdef PORT
+    // PORT: the main-memory boundary is OS_BASE_CACHED, which a sanitizer
+    // build moves (docs/design/build.md, "The memory map").
+    type = (dst >= OS_BASE_CACHED) ? 0x21 : 0x23;
+#else
     type = (dst >= 0x80000000) ? 0x21 : 0x23;
+#endif
     HSD_DevComRequest(file, 0, dst, OSRoundUp32B(*size), type, pri, callback,
                       args);
 }

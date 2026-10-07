@@ -142,6 +142,29 @@ void mnInfo_80251AFC(void)
     }
 }
 
+#ifdef PORT
+// PORT: typed AnimLoopSettings[0x12] and read as MnInfoDataLayout
+// (mnInfo_80251D58(), mnInfo_80252758()). Its strings are written as the
+// big-endian bit patterns of floats, which a little-endian host stores with
+// each word's characters reversed, so the archive is asked for a garbled
+// joint name. It is also 0xD8 bytes against the layout's 0xE0; the last
+// name's NUL is gap_07_803EFCE0_data[0]. One object, the bytes spelled as
+// what they are, decoded from the table in the #else.
+static MnInfoDataLayout port_mnInfo_data = {
+    { 0.0f, 199.0f, 0.0f },
+    { 0x505, 0x506, 0x507, 0x508 },
+    "%s.%s.%s",
+    "%s:%s:%s",
+    "Can't get user_data.\n",
+    "mninfo.c",
+    "user_data",
+    "MenMainConCo_Top_joint",
+    "MenMainConCo_Top_animjoint",
+    "MenMainConCo_Top_matanim_joint",
+    "MenMainConCo_Top_shapeanim_joint",
+};
+#define mnInfo_803EFC08 (&port_mnInfo_data.anim)
+#else
 static AnimLoopSettings mnInfo_803EFC08[0x12] = {
     { 0.0f, 199.0f, 0.0f },
     { 1.8e-42f, 1.802e-42f, 1.803e-42f },
@@ -162,6 +185,7 @@ static AnimLoopSettings mnInfo_803EFC08[0x12] = {
     { 7.3738955e28f, 1.5307577e19f, 1.7539375e19f },
     { 2.8395941e29f, 1.7935375e25f, 7.2243537e28f },
 };
+#endif
 #ifdef MUST_MATCH
 #pragma push
 #pragma force_active on
@@ -187,8 +211,15 @@ s32 mnInfo_80251D58(mnInfo_GObj* arg0, s32 arg1, u32 arg2, u32 arg3)
 
     data = arg0->user_data;
     layout = (MnInfoDataLayout*) mnInfo_803EFC08;
+#ifdef PORT
+    // PORT: data + arg1 * 4, two pointers on, is left_column[arg1] only with
+    // four-byte pointers; here it straddles two slots.
+    slot = &data->left_column[arg1];
+    if (*slot != NULL) {
+#else
     slot = (HSD_Text**) ((u8*) data + (arg1 * 4));
     if (*(slot += 2) != NULL) {
+#endif
         HSD_SisLib_803A5CC4(data->left_column[arg1]);
     }
     text = HSD_SisLib_803A6754(0, 1);
@@ -227,8 +258,15 @@ void mnInfo_80251F04(mnInfo_GObj* arg0, s32 arg1, u32 arg2)
     MnInfoData* data;
 
     data = arg0->user_data;
+#ifdef PORT
+    // PORT: data + arg1 * 4, six pointers on, is right_column[arg1] only
+    // with four-byte pointers; here it straddles two slots.
+    slot = &data->right_column[arg1];
+    if (*slot != NULL) {
+#else
     slot = (HSD_Text**) ((u8*) data + (arg1 * 4));
     if (*(slot += 6) != NULL) {
+#endif
         HSD_SisLib_803A5CC4(data->right_column[arg1]);
     }
     text = HSD_SisLib_803A5ACC(0, 0, -5.0f, (3.45f * (f32) arg1) + -5.9f,

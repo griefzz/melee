@@ -52,6 +52,19 @@ typedef enum {
 
 #define _p(x) (state.x)
 
+#ifdef PORT
+// PORT: read as a CardIconInfo (card.h), which is bytes, so the words are
+// spelt as the bytes the console stored: banner format 2 (RGB5A3), icon 0 in
+// format 1 (CI8) at speed 3, as lbsnap.c's table says in bytes. Stored
+// little-endian, the words would say no banner and no icon.
+static struct lb_803BAB60_t {
+    u8 bytes[0x14];
+} lb_803BAB60 = { {
+    0x02, 0x00, 0x01, 0x00, // 0x2000100
+    0x00, 0x00, 0x00, 0x00, // 0
+    0x00, 0x00, 0x03, 0x00, // 0x300
+} };
+#else
 static struct lb_803BAB60_t {
     u32 x0, x4, x8;
     u32 pad[2];
@@ -60,6 +73,7 @@ static struct lb_803BAB60_t {
     0,
     0x300,
 };
+#endif
 
 static LbCardEntry manifest[] = {
     { 0, fileType_3, NULL },

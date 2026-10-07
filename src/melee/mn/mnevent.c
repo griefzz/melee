@@ -553,6 +553,30 @@ void mnEvent_8024E1B4(HSD_GObj* gobj)
     {
         tmp = data;
         iter = data;
+#if defined(PORT) || defined(LINT)
+        (void) iter;
+#endif
+#ifdef PORT
+        // PORT: `iter` walks the same three arrays `tmp` indexes, by stepping
+        // the whole struct pointer four bytes at a time, so `iter->gobjs[0]`
+        // is `data->gobjs[i]` only while a pointer is four bytes. Here the
+        // step would have to be eight; the two spellings of the same slot on
+        // each line say which one is meant, so this indexes by name.
+        for (i = 0; i < 9; i++) {
+            if (tmp->gobjs[i] != NULL) {
+                HSD_GObjFree(tmp->gobjs[i]);
+                tmp->gobjs[i] = NULL;
+            }
+            if (tmp->texts[i] != NULL) {
+                HSD_SisLib_803A5CC4(tmp->texts[i]);
+                tmp->texts[i] = NULL;
+            }
+            if (tmp->icons[i] != NULL) {
+                HSD_SisLib_803A5CC4(tmp->icons[i]);
+                tmp->icons[i] = NULL;
+            }
+        }
+#else
         for (i = 0; i < 9; i++) {
             if (iter->gobjs[0] != NULL) {
                 HSD_GObjFree(tmp->gobjs[i]);
@@ -568,6 +592,7 @@ void mnEvent_8024E1B4(HSD_GObj* gobj)
             }
             iter = (MnEventData*) ((u8*) iter + 4);
         }
+#endif
         HSD_GObjFree(gobj);
     }
 }

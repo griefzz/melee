@@ -1,4 +1,7 @@
 #include "mnmain.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <melee/gm/forward.h>
 
@@ -707,8 +710,24 @@ void mn_80229894(s32 arg0, u16 arg1, s32 arg2)
     }
 }
 
+#ifdef PORT
+// PORT: the menu_option_unlocked hook, around the whole function because its
+// answer comes from five returns: Slippi's ShowHidden1pOption.asm replaces
+// one of them (+0x8C) and HandleOnlineLockedOptions.asm another (+0xB8).
+static bool mn_80229938_body(MenuKind menu_kind, s32 selection);
+
+bool mn_80229938(MenuKind menu_kind, s32 selection)
+{
+    return port_hook_menu_option_unlocked(
+               mn_80229938_body(menu_kind, selection), menu_kind,
+               selection) != 0;
+}
+
+static bool mn_80229938_body(MenuKind menu_kind, s32 selection)
+#else
 /// @brief checks if a menu selection is locked
 bool mn_80229938(MenuKind menu_kind, s32 selection)
+#endif
 {
     if (menu_kind == MENU_KIND_REG && selection == SEL_REG_ALLSTAR) {
         if (gmMainLib_8015EDD4()) {
@@ -1019,7 +1038,17 @@ void mn_8022A440(HSD_GObj* gp, HSD_JObj* root, MainMenuSelection selection)
 void mn_8022A5D0(HSD_GObj* gp, MainMenuSelection selection)
 {
     u8 _[8];
+#ifdef PORT
+    // PORT: the loop below fills this with
+    // `mn_803EB6B0[menu_kind].selection_count` entries, and one menu in that
+    // table has ten, so the console writes three pointers past the end of
+    // its array, into frame padding MWCC left. Here they are twenty-four
+    // bytes and clang's frame has no padding to absorb them. Twelve is this
+    // file's own ceiling for the shape (`option_jobjs[12]`).
+    HSD_JObj* spA0[12];
+#else
     HSD_JObj* spA0[7];
+#endif
     HSD_JObj* sp84[7];
     HSD_JObj* sp80;
     Vec3 sp74;
@@ -1214,9 +1243,20 @@ void fn_8022AFEC(HSD_GObj* gp)
         data = tmp_data;
     }
     state = data->state;
+#ifdef PORT
+    // PORT: the menu_panel_rebuild_forced hook, for Slippi's
+    // AllowSwapToSameSubmenu.asm (+0x58). `|`, not `||`: a request is spent
+    // whenever the state allows a rebuild, as the .asm clears its flag on
+    // both paths.
+    if ((state == MENU_STATE_5 || state <= MENU_STATE_ENTER_TO ||
+         state == MENU_STATE_EXIT_TO) &&
+        (port_hook_menu_panel_rebuild_forced() |
+         (data->menu_kind != mn_804A04F0.cur_menu)))
+#else
     if ((state == MENU_STATE_5 || state <= MENU_STATE_ENTER_TO ||
          state == MENU_STATE_EXIT_TO) &&
         data->menu_kind != mn_804A04F0.cur_menu)
+#endif
     {
         if (mn_804A04F0.entering_menu != 0) {
             data->state = MENU_STATE_ENTER_FROM;
@@ -1305,6 +1345,31 @@ void fn_8022AFEC(HSD_GObj* gp)
             }
         }
         if ((u8) selection_changed != false) {
+#ifdef PORT
+            // PORT: sp20 holds option_count entries of this panel's menu
+            // (data2->menu_kind), and the index is counted in the global
+            // cur_menu. On the frame the menu changes, before this panel is
+            // rebuilt, it can land past them on an uninitialised slot: the
+            // previous frame's joint on the console, at the same stack depth
+            // every frame, and anything here. A slot this panel did not fill
+            // is skipped, as it is about to be rebuilt.
+            {
+                MenuKind cur_menu = mn_804A04F0.cur_menu;
+                int k = mn_80229A04_dontinline(cur_menu,
+                                               mn_804A04F0.hovered_selection);
+                if (k < option_count && sp20[k] != NULL) {
+                    mn_80229F60(gp, sp20[k], mn_804A04F0.hovered_selection);
+                }
+            }
+            {
+                MenuKind cur_menu = mn_804A04F0.cur_menu;
+                int k = mn_80229A04_dontinline(cur_menu,
+                                               data2->hovered_selection);
+                if (k < option_count && sp20[k] != NULL) {
+                    mn_8022A440(gp, sp20[k], data2->hovered_selection);
+                }
+            }
+#else
             /// @todo problem spot
             {
                 MenuKind cur_menu = mn_804A04F0.cur_menu;
@@ -1320,6 +1385,7 @@ void fn_8022AFEC(HSD_GObj* gp)
                                 cur_menu, data2->hovered_selection)],
                             data2->hovered_selection);
             }
+#endif
         }
         if ((u8) selection_changed != false) {
             hovered_selection = mn_804A04F0.hovered_selection;
@@ -2486,7 +2552,15 @@ void mn_8022D594(HSD_GObj* gp)
         case SEL_VS_TOURNAMENT:
             sfxForward();
             data = gm_GetCurrentSceneExitData();
+#ifdef PORT
+            // PORT: the debug_menu_enabled hook, for Magus and donny2112's
+            // Debug Menu, `04 mn_8022D594+0xA4 <- li r0, 6`: Tournament
+            // Melee opens the debug menu. Inert unless --slippi-general.
+            data->pending_mode =
+                port_hook_debug_menu_enabled() ? GM_DEBUG : GM_TOURNAMENT;
+#else
             data->pending_mode = GM_TOURNAMENT;
+#endif
             gm_801A4B60();
             break;
         case SEL_VS_SPECIAL:
@@ -2607,6 +2681,15 @@ void mn_8022D7F4(HSD_GObj* gp)
             data->pending_mode = GM_TRAINING;
             gm_801A4B60();
             break;
+#ifdef PORT
+        default:
+            // PORT: the menu_option_confirmed hook: the hidden third
+            // option, which Slippi's OnlineModeOptionSelected.asm makes
+            // Online Play (+0x98).
+            port_hook_menu_option_confirmed(MENU_KIND_1P,
+                                            mn_804A04F0.hovered_selection);
+            break;
+#endif
         }
     } else if (buttons & MenuInput_Back) {
         sfxBack();
@@ -2962,6 +3045,12 @@ void mnMain_Scene_OnEnter(void* user_data)
     }
     lbAudioAx_80023F28(gmMainLib_8015ECB0());
     lbCardGame_SaveChanges();
+#ifdef PORT
+    // PORT: the menu_scene_entered hook, for Slippi's OnMenuLoad.asm
+    // (+0xB94); at the end, because some returns to the menu skip the calls
+    // above it.
+    port_hook_menu_scene_entered();
+#endif
 }
 
 char null_terminator[1] = "\0";

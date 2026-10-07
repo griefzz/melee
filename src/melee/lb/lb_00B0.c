@@ -742,6 +742,12 @@ HSD_LObj* lb_8000CDC0(HSD_LObj* cur)
         }
         cur = HSD_LObjGetNext(cur);
     }
+#ifdef PORT
+    // PORT: no `return` in the decomp, and falling off the end is undefined
+    // in C. The loop ends only with `cur` NULL, which is what the console's
+    // r3 holds there; the one caller is ftCo_8009F4A4() (ftCo_09F4.c).
+    return cur;
+#endif
 }
 
 void lb_8000CE30(HSD_DObj* dobj, HSD_DObj* next)

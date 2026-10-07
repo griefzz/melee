@@ -368,7 +368,15 @@ Vec3* lbVector_WorldToScreen(HSD_CObj* cobj, const Vec3* pos3d,
 {
     u8 _[16];
 
+#ifdef PORT
+    // PORT: MTXPerspective() and MTXOrtho() write a 4x4 (the SDK declares
+    // them on Mtx44) and the console's local is a 3x4, so the last row lands
+    // sixteen bytes past it. MWCC's frame absorbed that; clang's frame can
+    // put a live local there.
+    Mtx44 projMtx;
+#else
     Mtx projMtx;
+#endif
     float projection[7]; // projection params
     float viewport[6];   // viewport params
     Mtx m;

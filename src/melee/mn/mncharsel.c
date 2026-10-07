@@ -1,4 +1,7 @@
 #include "mncharsel.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <melee/ft/forward.h>
 #include <sysdolphin/baselib/forward.h>
@@ -99,7 +102,29 @@ static s8 mnCharSel_804D6CF9;
 #define ICONBNDS_COL8_L 24.4F
 #define ICONBNDS_COL8_R 30.2F
 
+#ifdef PORT
+// PORT: the console laid six statics end to end, and this file walks them as
+// one CSSAllData; the byte offsets commented on its members are offsets from
+// this symbol. Here they would be six independent objects the compiler may
+// place anywhere, and `all_data->tags[i].data` would read past the end of a
+// 0xDC-byte static. The storage is one object, and the other five names
+// point into it. The initialiser data is shared by both branches; only the
+// declarators differ, so the #ifdefs sit at the seams between the six. See
+// docs/design/verification.md, "Statics laid end to end".
+typedef struct CSSAllData {
+    u8 gnw_name[0x1C];
+    CSSModeInfo mode_info[24];
+    CSSIcon icons[26];
+    CSSDoorsData doors_data;    // 0x3B4
+    CSSTag tags[4];             // 0x444
+    struct CSSDoorsMisc misc;   // 0x474
+    struct CSSDoorsData2 data2; // 0x4A4
+} CSSAllData;
+
+static CSSAllData mnCharSel_803F0A48_region = {
+#else
 static CSSIconsData mnCharSel_803F0A48 = {
+#endif
     {
         // GnW Name
         0x82, 0x6C, 0x82, 0x92, // 0x803F0A48
@@ -137,9 +162,13 @@ static CSSIconsData mnCharSel_803F0A48 = {
         { 0x000D, 0x0000, 0x00007534 }, // 0x803F0B14
         { 0x0007, 0x0000, 0x00007532 }  // 0x803F0B1C
     },
+#ifdef PORT
+    {
+#else
 };
 
 static CSSIcon icons[25 + 1] = {
+#endif
     // -------- Icons Top Row --------
 
     { // Dr. Mario -                      0x803F0B24
@@ -248,9 +277,14 @@ static CSSIcon icons[25 + 1] = {
       ICONHUD_EMBLEM, CKind_Emblem, ICONSTATE_UNLOCKED, 0x00, ICONJOINT_EMBLEM,
       ICONJOINT_EMBLEM, 0x000000DA, ICONBNDS_COL7_L, 23.6, ICONROWHT_BTM_TOP,
       ICONROWHT_BTM_BTM }
+#ifdef PORT
+    },
+    {
+#else
 };
 
 static CSSDoorsData mnCharSel_803F0DFC = {
+#endif
     { { 0x2E, 0x33, 0x38, 0x85, 0x29,  0xA6,  0x3D,  0x41,
         0x40, 0,    0,    0,    0,     0,     0,     0,
         0,    0,    0,    0,    -35.6, -28.6, -26.8, -21.0F },
@@ -262,21 +296,36 @@ static CSSDoorsData mnCharSel_803F0DFC = {
       { 0x31, 0x36, 0x3B, 0x9D, 0x2C,  0xAC,  0x4F,  0x53,
         0x52, 0x00, 0x00, 0x00, 0x00,  0x00,  0x00,  0x00,
         0x00, 0x00, 0x00, 0x00, 11.0F, 17.0F, 19.0F, 24.6 } },
+#ifdef PORT
+    },
+    {
+#else
 };
 
 static CSSTag mnCharSel_803F0E8C[4] = {
+#endif
     { NULL, 0x70, 0x73, 0x74, 0x72, 0x71 },
     { NULL, 0x75, 0x78, 0x79, 0x77, 0x76 },
     { NULL, 0x7A, 0x7D, 0x7E, 0x7C, 0x7B },
     { NULL, 0x7F, 0x82, 0x83, 0x81, 0x80 },
+#ifdef PORT
+    },
+    {
+#else
 };
 
 static struct CSSDoorsMisc mnCharSel_803F0EBC = {
+#endif
     0,    0,    0, 0, 0x4A, 0x4D, 0x4E,  0x4C, 0x4B, 0,    0,    0,
     0x2F, 0x01, 0, 0, 0,    NULL, -10.9, -4.2, 12.5, 19.6, -6.8, -12.1,
+#ifdef PORT
+    },
+    {
+#else
 };
 
 static struct CSSDoorsData2 data2 = {
+#endif
     { 0x35, 0x39, 0x36, 0x38, 0x37 },
     0,
     0,
@@ -293,7 +342,37 @@ static struct CSSDoorsData2 data2 = {
         { NULL, 8.3, 0x63 },
         { NULL, 23.7, 0x69 },
     },
+#ifdef PORT
+    },
 };
+
+// PORT: the six names, pointing into the one object above. `icons` is a
+// pointer rather than a macro because CSSAllData has a member of that name,
+// which an object-like macro would rewrite into a syntax error at every
+// `all_data->icons`. Nothing takes its sizeof or its address, so a
+// `CSSIcon* const` indexes identically. The other names appear nowhere as
+// member names, so macros are safe and keep `.field` access working.
+#define mnCharSel_803F0A48 mnCharSel_803F0A48_region
+static CSSIcon* const icons = mnCharSel_803F0A48_region.icons;
+#define mnCharSel_803F0DFC mnCharSel_803F0A48_region.doors_data
+#define mnCharSel_803F0E8C mnCharSel_803F0A48_region.tags
+#define mnCharSel_803F0EBC mnCharSel_803F0A48_region.misc
+#define data2 mnCharSel_803F0A48_region.data2
+#else
+};
+#endif
+#ifdef PORT
+// PORT: the character select's icon table and its length, which Slippi's
+// online scene reads by address (GetCSSIconData/GetCSSIconNum) to make
+// Zelda's icon pick Sheik.
+CSSIcon* mnCharSel_GetIcons(int* count)
+{
+    if (count != NULL) {
+        *count = 25;
+    }
+    return icons;
+}
+#endif
 
 u8* mnCharSel_8025BC20(u8* dst, u32 value)
 {
@@ -2134,6 +2213,13 @@ void mnCharSel_CostumeChange(int door, u32 input)
 {
     u8 prev_costume = mnCharSel_803F0DFC.doors[door].costume;
 
+#ifdef PORT
+    // PORT: Slippi's PreventColorChange.asm (+0x14): the online screen keeps
+    // a locked-in colour.
+    if (port_hook_css_costume_change_blocked()) {
+        return;
+    }
+#endif
     if (mnCharSel_803F0DFC.doors[door].sel_icon >= 0x19) {
         return;
     }
@@ -2412,7 +2498,15 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
             if (HSD_PadCopyStatus[cursor->x4].err != 0) {
                 if (cursor->x5 != 3) {
                     cursor->xC = (f32) ((15.0f * cursor->x4) - 31.0f);
+#ifdef PORT
+                    // PORT: the css_hand_y hook, for Achilles1515's Change
+                    // Default Hand Position: the pooled -21.5f (@2307) is
+                    // -2.5f, here and at the entry below. Inert unless
+                    // --slippi-general.
+                    cursor->x10 = port_hook_css_hand_y(-21.5f);
+#else
                     cursor->x10 = -21.5f;
+#endif
                     cursor->xA = 0;
                     if (cursor->x5 == 1) {
                         door = cursor->x6;
@@ -2436,7 +2530,16 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                         }
                     }
                     if (mnCharSel_803F0DFC.doors[cursor->x4].p_kind == 0) {
+#ifdef PORT
+                        // PORT: the css_unplugged_kind hook, for
+                        // UnclePunch's Unplugging Closes CSS Door,
+                        // `04 +0x35C <- li r6, 3`: the unplugged door becomes
+                        // NA, not CPU. Inert unless --slippi-general.
+                        mnCharSel_803F0DFC.doors[cursor->x4].p_kind =
+                            (u8) port_hook_css_unplugged_kind(1);
+#else
                         mnCharSel_803F0DFC.doors[cursor->x4].p_kind = 1;
+#endif
                         mnCharSel_804D6CB0->vs.start.players[cursor->x4]
                             .slot_type = 1;
                         mnCharSel_804D6CB0->vs.start.players[cursor->x4]
@@ -2945,7 +3048,20 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                                  * 1/10485760. */
                                                 if (cy4 <
                                                         0.20000009536743146 &&
+#ifdef PORT
+                                                    // PORT: Achilles1515's
+                                                    // Fix A Button Buffer
+                                                    // When Exiting Name Entry,
+                                                    // at +0x17CC: a hand with
+                                                    // x5 == 2 skips this
+                                                    // block. Inert unless
+                                                    // --slippi-general.
+                                                    cy4 > -4.600000095367432 &&
+                                                    !port_hook_css_hand_skips_toggle(
+                                                        cursor->x5))
+#else
                                                     cy4 > -4.600000095367432)
+#endif
                                                 {
                                                     cursor->x10 = -2.2f;
                                                     {
@@ -2998,6 +3114,27 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                                             .doors[door]
                                                             .p_kind == 1)
                                                     {
+#ifdef PORT
+                                                        // PORT: Slippi's
+                                                        // Closing CSS Door
+                                                        // Preserves Nametag:
+                                                        // two nops,
+                                                        // +0x187C and +0x1890,
+                                                        // over these two
+                                                        // stores. Inert unless
+                                                        // --slippi-general.
+                                                        if (!port_hook_css_door_keeps_tag()) {
+                                                            mnCharSel_804D6CB0
+                                                                ->vs.start
+                                                                .players[door]
+                                                                .nametag = 0x78;
+                                                            mnCharSel_803F0E8C
+                                                                [door]
+                                                                    .data
+                                                                    ->use_tag =
+                                                                0;
+                                                        }
+#else
                                                         mnCharSel_804D6CB0->vs
                                                             .start
                                                             .players[door]
@@ -3006,6 +3143,7 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                                             [door]
                                                                 .data
                                                                 ->use_tag = 0;
+#endif
                                                         if (mnCharSel_803F0DFC
                                                                     .doors
                                                                         [door]
@@ -3178,6 +3316,12 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                                 -1);
                                         }
                                         lb_8000B1CC(sp98, NULL, (&sp88));
+#ifdef PORT
+                                        // PORT: Slippi's
+                                        // DisableNametagBox.asm (+0x1BBC):
+                                        // online, the name is the account's.
+                                        if (!port_hook_css_nametag_box_blocked())
+#endif
                                         {
                                             if (cursor->xC > (sp88.x - 4.7f) &&
                                                 cursor->xC < (5.2f + sp88.x))
@@ -3256,7 +3400,15 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                         }
                                     }
 
+#ifdef PORT
+                                    // PORT: Slippi's
+                                    // PreventAPressCharUnselect.asm
+                                    // (+0x1D64): a locked-in token stays put.
+                                    if (closest >= 0 &&
+                                        !port_hook_css_unselect_blocked()) {
+#else
                                     if (closest >= 0) {
+#endif
                                         u8 cport4 = cursor->x4;
                                         s32 closest_door = (u8) closest;
                                         mnCharSel_804A0BD0[(u8) closest]->x5 =
@@ -3281,7 +3433,15 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                                    -2.0f);
                                     }
                                 }
+#ifdef PORT
+                                // PORT: Slippi's
+                                // PreventBPressCharUnselect.asm (+0x1E0C),
+                                // as for A above.
+                            } else if ((trigger & HSD_PAD_B) &&
+                                       !port_hook_css_unselect_blocked()) {
+#else
                             } else if (trigger & HSD_PAD_B) {
+#endif
                                 u8 cport5;
                                 (void) mnCharSel_803F0DFC
                                     .doors[cport5 = cursor->x4];
@@ -3753,7 +3913,22 @@ void fn_80262F44(HSD_GObj* gobj)
             }
         }
 
+#ifdef PORT
+        // PORT: the css_start_pressed hook, for Slippi's DPad Down at CSS for
+        // Random Stage, at fn_80262F44+0x318 (the Start test): D-pad down
+        // sets the rules to a random stage and starts the match; Start sets
+        // them back to choose. Without --slippi-general this is the Start
+        // test again. Slippi's online screen's HandleInputsOnCSS (+0x314)
+        // owns the test there, and reads and sets the state it is passed.
+        if (mnCharSel_804D6CF2 == 0 &&
+            port_hook_css_start_pressed(
+                (int) (trigger & HSD_PAD_START), trigger,
+                mnCharSel_804D6CF7 != 0, mnCharSel_804D6CB0,
+                mnCharSel_804D6CF0, &mnCharSel_804D6CF6,
+                (unsigned char*) &mnCharSel_804D6CF9)) {
+#else
         if (mnCharSel_804D6CF2 == 0 && (trigger & HSD_PAD_START)) {
+#endif
             if (mnCharSel_804D6CF7 != 0) {
                 mnCharSel_804D6CF6 = 1;
                 mnCharSel_804D6CF2 = 0xFF;
@@ -4236,6 +4411,11 @@ s32 mnCharSel_802640A0(void)
     u8 match_type = mnCharSel_804D6CB0->match_type;
 
     if (match_type != 0) {
+#ifdef PORT
+        // PORT: Slippi's SkipReturnToCssSound.asm (+0x78): not after the
+        // name entry, nor once locked in.
+        if (!port_hook_css_enter_sound_skipped())
+#endif
         lbAudioAx_800237A8(mnCharSel_803F0A48.mode_info[match_type].enter_sfx,
                            0x7F, 0x40);
     } else {
@@ -4259,7 +4439,14 @@ s32 mnCharSel_802640A0(void)
     mnCharSel_804D6CDC = NULL;
     mnCharSel_804D6CE8 = NULL;
     mnCharSel_804D6CE4 = NULL;
+#ifdef PORT
+    // PORT: the css_ready_wait hook, for UnclePunch's Faster CSS Load,
+    // `04 +0x110 <- li r0, 1`: the wait before the screen takes input. Inert
+    // unless --slippi-general.
+    mnCharSel_804D6CF2 = (u8) port_hook_css_ready_wait(0x1E);
+#else
     mnCharSel_804D6CF2 = 0x1E;
+#endif
     mnCharSel_804D6CF3 = 0;
     {
         u8* mt_p = &mnCharSel_804D6CB0->match_type;
@@ -4510,7 +4697,11 @@ s32 mnCharSel_802640A0(void)
         cursor->x6 = 0;
         cursor->x5 = 2;
         cursor->xC = (f32) ((15.0f * (f32) i) - 31.0f);
+#ifdef PORT
+        cursor->x10 = port_hook_css_hand_y(-21.5f); // PORT: @2307, as above
+#else
         cursor->x10 = -21.5f;
+#endif
     }
 
     for (i = 0, slot = 0; i < num_players; i++, slot++) {
@@ -4665,6 +4856,13 @@ s32 mnCharSel_802640A0(void)
             text->box_size_y = 32.0f;
             HSD_SisLib_803A6B98(td->text, 80.0f, 0.0f,
                                 "\x81\x45\x81\x45\x81\x45\x81\x45");
+#ifdef PORT
+            // PORT: the css_name_drawn hook, for UnclePunch's Winners Names
+            // are Gold on CSS / Change Name Color, at +0x1180: the slot that
+            // won the last match gets its name in gold. Inert unless
+            // --slippi-general.
+            port_hook_css_name_drawn(td->text, i);
+#endif
         }
         if (mnCharSel_804D6CF5 == 1) {
             lb_80011E24(mnCharSel_804D6CC0, &sp108,
@@ -5155,6 +5353,10 @@ s32 mnCharSel_802640A0(void)
         }
     } else {
         mnCharSel_803F0EBC.scroll_flag = 0;
+#ifdef PORT
+        // PORT: Slippi's UCF Text.asm (+0x2230): the "UCF" label.
+        port_hook_css_vs_texts_starting();
+#endif
         text =
             HSD_SisLib_803A5ACC(0, ctx, -12.0f, -23.3f, 0.0f, 450.0f, 32.0f);
         text->default_alignment = 1;
@@ -5282,6 +5484,12 @@ s32 mnCharSel_802640A0(void)
 
     mnCharSel_8025EE8C(mnCharSel_804D6CB0->match_type);
     PAD_STACK(0x1C);
+#ifdef PORT
+    // PORT: Slippi's online screen adds its panel text and title here
+    // (LoadCSSText.asm), in this function because the name entry comes back
+    // through it and not through the scene's OnEnter.
+    port_hook_css_panel_built(mnCharSel_804D6CC0, &mnCharSel_804D6CF7);
+#endif
     return lbAudioAx_80023F28(gmMainLib_8015ECB0());
 }
 
@@ -5331,6 +5539,11 @@ void mnCharSel_Scene_OnEnter(void* arg0)
         HSD_SisLib_803A62A0(0, "SdSlChr.usd", "SIS_SelCharData");
     }
     mnCharSel_804D6CF4 = 0;
+#ifdef PORT
+    // PORT: Slippi's online screen loads its own archive here
+    // (SceneLoadCSS.asm).
+    port_hook_css_scene_entered();
+#endif
     mnCharSel_802640A0();
 }
 
@@ -5343,6 +5556,13 @@ void mnCharSel_Scene_OnFrame(void)
 
     PAD_STACK(8);
 
+#ifdef PORT
+    // PORT: the css_frame_skipped hook; --chars answers it
+    // (port/game/debug/start_flags.c), and has left the scene when it does.
+    if (port_hook_css_frame_skipped(mnCharSel_804D6CB0)) {
+        return;
+    }
+#endif
     mnCharSel_804D6CEC += 1;
     if (mnCharSel_804D6CF6 <= 1) {
         cache = &lbDvd_GetPreloadCacheScene()->game_cache;
@@ -5401,7 +5621,13 @@ void mnCharSel_Scene_OnFrame(void)
         }
         lbDvd_80018254();
     }
+#ifdef PORT
+    // PORT: Slippi's online CSS ignores L+R+Start (DisableLRSTART.asm,
+    // +0x1D0).
+    if (mn_8022F218() != 0 && !port_hook_menu_lr_start_blocked()) {
+#else
     if (mn_8022F218() != 0) {
+#endif
         sfxBack();
         lb_800145F4();
         mn_8022F138(1, 8);
@@ -5428,6 +5654,15 @@ void mnCharSel_Scene_OnFrame(void)
             if (mnCharSel_804D6CF5 == 4) {
                 lbAudioAx_8002411C(0x147);
             }
+#ifdef PORT
+            // PORT: the css_random_stage_rules hook, for UnclePunch's
+            // Disable FoD During Doubles, at mnCharSel_Scene_OnFrame+0x2EC
+            // (the `li r3, 1` of this sound call): Fountain of Dreams
+            // follows the mode in the random stage set. Inert unless
+            // --slippi-general.
+            port_hook_css_random_stage_rules(
+                mnCharSel_804D6CB0->vs.start.rules.is_teams);
+#endif
             sfxForward();
         }
         break;

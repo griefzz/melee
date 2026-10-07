@@ -4,6 +4,9 @@
 #include <melee/gm/forward.h>
 
 #include <string.h>
+#ifdef PORT
+#include <port/hooks.h> // port_hook_preload_missed()
+#endif
 
 #include "lb_0195.h"
 #include "lbarchive.h"
@@ -476,6 +479,14 @@ HSD_Archive* lbDvd_8001819C(const char* basename)
     HSD_Archive* archive;
     char* filename = lbFileGetFullName(basename);
     archive = lbDvd_GetPreloadedArchive(DVDConvertPathToEntrynum(filename));
+#ifdef PORT
+    // PORT: hook preload_missed. The report below is compiled out at Master,
+    // and the miss is what explains the allocator's assert several frames
+    // later.
+    if (preloadCache.preloaded && archive == NULL) {
+        port_hook_preload_missed(filename);
+    }
+#endif
     if (DbLevel != DbLKind_Master && preloadCache.preloaded && archive == NULL)
     {
         HSD_ASSERTREPORT(948, 0, "[LbDvd] %s is not PRELOADed.\n", filename);

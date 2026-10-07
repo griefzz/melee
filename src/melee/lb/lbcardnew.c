@@ -1,4 +1,7 @@
 #include "lbcardnew.h"
+#ifdef PORT
+#include <port/memcard.h>
+#endif
 
 #include <Runtime/platform.h>
 
@@ -339,6 +342,12 @@ void fn_8001A0B0(int file_idx, int hsd_error)
     s32 error;
 
     error = convertHsdResult(hsd_error);
+#ifdef PORT
+    // PORT: the card holds the game's structs in the console's byte order. A
+    // read that filled one goes back to host order before the game sees it;
+    // docs/design/sdk.md, "The memory card".
+    port_card_read_done(file_idx, error == LbCardResult_Ready);
+#endif
 
     _p(unk_38)[file_idx].lb_error = error;
     _p(unk_38)[file_idx].hsd_result = hsd_error;
@@ -613,6 +622,30 @@ int taskCreate(const char* filename)
     int hsd_result;
     PAD_STACK(4);
 
+#ifdef PORT
+    // PORT: creating a file writes every registered entry from its pointer
+    // (fn_803B1338(), baselib/card.c), so each one is pointed at a copy in
+    // the console's byte order first, as taskWrite() does.
+    {
+        int i;
+
+        for (i = 0; i < HSD_CARD_MAX_FILES; i++) {
+            void* console_order;
+
+            if (_p(card_state).file_sizes[i] <= 0 ||
+                _p(card_state).file_data[i] == NULL)
+            {
+                continue;
+            }
+            console_order = port_card_to_console(
+                i, _p(card_state).file_flags[i], _p(card_state).file_data[i],
+                _p(card_state).file_sizes[i]);
+            if (console_order != NULL) {
+                _p(card_state).file_data[i] = console_order;
+            }
+        }
+    }
+#endif
     hsd_result = hsd_803B286C(&_p(card_state), filename, _p(comment),
                               _p(banner), _p(icons), fn_8001A0B0);
     _p(saved_error) = convertHsdResult(hsd_result);
@@ -644,11 +677,24 @@ int taskRead(LbCardEntry* entries)
         cached_size = readCardFileSize(&_p(card_state).file_sizes[i]);
         cached_data = _p(card_state).file_flags[i];
         if (readCardFileSize(&_p(card_state).file_sizes[i]) != 0) {
+#ifdef PORT
+            // PORT: the card holds the struct in the console's byte order;
+            // it goes back to host order when the read completes
+            // (fn_8001A0B0()).
+            port_card_read_started(i, _p(card_state).file_flags[i],
+                                   entries[i].data,
+                                   _p(card_state).file_sizes[i]);
+#endif
             hsd_result =
                 hsd_803B29D8(&_p(card_state), i, entries[i].data, fn_8001A0B0);
             _p(unk_38)[i].lb_error = convertHsdResult(hsd_result);
             _p(unk_38)[i].hsd_result = hsd_result;
             file_error = _p(unk_38)[i].lb_error;
+#ifdef PORT
+            if (file_error != LbCardResult_Ready) {
+                port_card_read_done(i, 0); // never queued: nothing will land
+            }
+#endif
             if (file_error == LbCardResult_Ready) {
                 _p(tasks_remaining) += 1;
             } else {
@@ -676,8 +722,22 @@ int taskWrite(LbCardEntry* entries)
         cached_flag = readCardFileSize(&_p(card_state).file_sizes[i]);
         cached_data = _p(card_state).file_flags[i];
         if (readCardFileSize(&_p(card_state).file_sizes[i]) != 0) {
+#ifdef PORT
+            // PORT: written from a copy in the console's byte order, as the
+            // console writes it; the card task writes and verifies from that
+            // copy.
+            void* console_order = port_card_to_console(
+                i, _p(card_state).file_flags[i], entries[i].data,
+                _p(card_state).file_sizes[i]);
+
+            hsd_result = hsd_803B2A4C(
+                &_p(card_state), i,
+                console_order != NULL ? console_order : entries[i].data,
+                fn_8001A0B0);
+#else
             hsd_result =
                 hsd_803B2A4C(&_p(card_state), i, entries[i].data, fn_8001A0B0);
+#endif
             _p(unk_38)[i].lb_error = convertHsdResult(hsd_result);
             _p(unk_38)[i].hsd_result = hsd_result;
             file_error = _p(unk_38)[i].lb_error;

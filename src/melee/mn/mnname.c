@@ -68,6 +68,53 @@
 /* 4A06C0 */ static StaticModelDesc mnName_804A06C0;
 /* 4A06D0 */ static StaticModelDesc mnName_804A06D0;
 /* 4A06E0 */ static StaticModelDesc mnName_804A06E0;
+#ifdef PORT
+// PORT: the list's user data is a MnName_GObj, 0x44 console bytes named
+// through an HSD_GObj header and holding thirteen HSD_JObj* slots four bytes
+// apart from +0x08. mnName_8023A59C() fills them with one `(i << 2) + 8`
+// loop, and the file reads them back by field name (gobj.proc,
+// gobj.user_data_remove_func, x38) and by console offset
+// (mnName_802388D4()). Here those fields are eight bytes, so the loop's
+// stores would overlap and stop short of the name grid's parent. A slot is
+// the field at its console offset. +0x20 and +0x24 are the two halves of
+// gxlink_prios, and only +0x24 (the "new name" button) is read, so it gets
+// the field and +0x20 none; lb_80011E24() skips a NULL destination.
+static HSD_JObj** mnName_JObjSlot(void* user_data, s32 console_offset)
+{
+    MnName_GObj* ud = user_data;
+
+    switch (console_offset) {
+    case 0x08:
+        return (HSD_JObj**) &ud->gobj.next;
+    case 0x0C:
+        return (HSD_JObj**) &ud->gobj.prev;
+    case 0x10:
+        return (HSD_JObj**) &ud->gobj.next_gx;
+    case 0x14:
+        return (HSD_JObj**) &ud->gobj.prev_gx;
+    case 0x18:
+        return (HSD_JObj**) &ud->gobj.proc;
+    case 0x1C:
+        return (HSD_JObj**) &ud->gobj.render_cb;
+    case 0x20:
+        return NULL;
+    case 0x24:
+        return (HSD_JObj**) &ud->gobj.gxlink_prios;
+    case 0x28:
+        return (HSD_JObj**) &ud->gobj.hsd_obj;
+    case 0x2C:
+        return (HSD_JObj**) &ud->gobj.user_data;
+    case 0x30:
+        return (HSD_JObj**) &ud->gobj.user_data_remove_func;
+    case 0x34:
+        return (HSD_JObj**) &ud->gobj.x34_unk;
+    case 0x38:
+        return (HSD_JObj**) &ud->x38;
+    }
+    HSD_ASSERTMSG(__LINE__, 0, "mnName_JObjSlot: not a jobj slot");
+    return NULL;
+}
+#endif
 
 /// Shared model descriptors loaded by both name-entry menus.
 StaticModelDesc mnNameNew_804A06F0;
@@ -785,7 +832,12 @@ HSD_JObj* mnName_802388D4(HSD_GObj* gobj, u8 index)
     u8* p = (u8*) gobj;
 
     if (index < 0x18) {
+#ifdef PORT
+        // PORT: console offsets into MnName_GObj; see mnName_JObjSlot().
+        HSD_JObj* jobj = HSD_JObjGetChild(*mnName_JObjSlot(p, 0x30));
+#else
         HSD_JObj* jobj = HSD_JObjGetChild(*(HSD_JObj**) (p + 0x30));
+#endif
         s32 i;
 
         for (i = 0; i < index; i++) {
@@ -794,12 +846,22 @@ HSD_JObj* mnName_802388D4(HSD_GObj* gobj, u8 index)
         return jobj;
     } else {
         switch (index) {
+#ifdef PORT
+        // PORT: console offsets into MnName_GObj; see mnName_JObjSlot().
+        case 0x18:
+            return *mnName_JObjSlot(p, 0x24);
+        case 0x19:
+            return *mnName_JObjSlot(p, 0x18);
+        case 0x1A:
+            return *mnName_JObjSlot(p, 0x1C);
+#else
         case 0x18:
             return *(HSD_JObj**) (p + 0x24);
         case 0x19:
             return *(HSD_JObj**) (p + 0x18);
         case 0x1A:
             return *(HSD_JObj**) (p + 0x1C);
+#endif
         default:
             return (HSD_JObj*) gobj;
         }
@@ -1531,7 +1593,11 @@ HSD_GObj* mnName_8023A59C(u8 arg0)
                        archive->matanim_joint, archive->shapeanim_joint);
     HSD_JObjReqAnimAll(root_jobj[0], 0.0f);
     HSD_JObjAnimAll(root_jobj[0]);
+#if defined(PORT) || defined(LINT)
+    user_data = (MnName_GObj*) HSD_MemAlloc(sizeof(MnName_GObj));
+#else
     user_data = (MnName_GObj*) HSD_MemAlloc(0x44);
+#endif
     HSD_ASSERTREPORT(0x67CU, user_data, "Can't get user_data.\n");
     GObj_InitUserData(gobj, 0U, HSD_Free, user_data);
     *(u8*) &user_data->gobj.classifier = (u8) mn_804A04F0.cur_menu;
@@ -1543,8 +1609,14 @@ HSD_GObj* mnName_8023A59C(u8 arg0)
     user_data->text = NULL;
     user_data->text2 = NULL;
     for (i = 0; i < 0xD; i++) {
+#ifdef PORT
+        // PORT: slot i is console offset 8 + 4 * i; see mnName_JObjSlot().
+        lb_80011E24(root_jobj[0], mnName_JObjSlot(user_data, (i << 2) + 8), i,
+                    -1);
+#else
         lb_80011E24(root_jobj[0],
                     (HSD_JObj**) ((u8*) user_data + (i << 2) + 8), i, -1);
+#endif
     }
     if (mn_804A04F0.x10 == 1) {
         struct mn_80231634_t* p =
@@ -1553,7 +1625,13 @@ HSD_GObj* mnName_8023A59C(u8 arg0)
         if (p == NULL) {
             j = NULL;
         } else {
+#ifdef PORT
+            // PORT: mn_80231634() inlined: +0x10 is the joint's child on the
+            // console and `next` here, read as an int.
+            j = HSD_JObjGetChild((HSD_JObj*) p);
+#else
             j = (HSD_JObj*) p->x10;
+#endif
         }
         HSD_JObjRemoveAll(j);
         if (user_data->text != NULL) {
@@ -1571,7 +1649,12 @@ HSD_GObj* mnName_8023A59C(u8 arg0)
         mnName_80239A24((HSD_GObj*) user_data);
         mnName_80238754_noinline((HSD_GObj*) user_data);
     }
+#ifdef PORT
+    // PORT: [9] is console offset 0x24, slot 7; see mnName_JObjSlot().
+    jobj7[0] = *mnName_JObjSlot(user_data, 0x24);
+#else
     jobj7[0] = ((HSD_JObj**) user_data)[9];
+#endif
     HSD_JObjReqAnimAll(jobj7[0],
                        mnName_804D4BD0[mn_804A04F0.hovered_selection == 0x18]);
     HSD_JObjAnimAll(jobj7[0]);
@@ -1626,7 +1709,12 @@ void mnName_8023A9B4(u8 arg0)
         if (p == NULL) {
             jobj = NULL;
         } else {
+#ifdef PORT
+            // PORT: mn_80231634() inlined, as in mnName_8023A59C() above.
+            jobj = HSD_JObjGetChild((HSD_JObj*) p);
+#else
             jobj = (HSD_JObj*) p->x10;
+#endif
         }
         HSD_JObjRemoveAll(jobj);
         if (gobj2->text != NULL) {
@@ -1713,6 +1801,21 @@ s32 mnName_8023AC40(void)
         &mnNameNew_804A0720[0].shapeanim_joint,
         "MenMainSbaseEtNw_Top_shapeanim_joint", 0);
 
+#ifdef PORT
+    // PORT: mnName_803ED538 + 0x4D0 onwards is where the console's .data
+    // put the four name strings at the end of this file (0x803EDA08 on);
+    // here they are unreferenced statics somewhere else. These are the
+    // literals mnNameNew_EnterFromMnCharSel() passes for the same symbols.
+    if (lbLang_IsSavedLanguageUS()) {
+        lbArchive_LoadSections(
+            archive, (void**) &AutoNamesList, "mnNameAutoNameUs",
+            (void**) &NotAllowedNamesList, "mnNameRefuseNameUs", NULL);
+    } else {
+        lbArchive_LoadSections(
+            archive, (void**) &AutoNamesList, "mnNameAutoName",
+            (void**) &NotAllowedNamesList, "mnNameRefuseName", NULL);
+    }
+#else
     if (lbLang_IsSavedLanguageUS()) {
         lbArchive_LoadSections(archive, &AutoNamesList, "mnNameAutoNameUs",
                                &NotAllowedNamesList, "mnNameRefuseNameUs", 0);
@@ -1720,6 +1823,7 @@ s32 mnName_8023AC40(void)
         lbArchive_LoadSections(archive, &AutoNamesList, "mnNameAutoName",
                                &NotAllowedNamesList, "mnNameRefuseName", 0);
     }
+#endif
 
     mn_804A04F0.prev_menu = mn_804A04F0.cur_menu;
     mn_804A04F0.cur_menu = 0x12;

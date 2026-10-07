@@ -101,7 +101,15 @@ static inline void mnVibration_JObjSetTranslateZ(HSD_JObj* jobj, f32 z)
 
 // --- Static data ---
 static u16 mnVibration_PortPanelJointIds[4] = { 0x16, 0x15, 0x14, 0x13 };
+#ifdef PORT
+// PORT: a rumble pattern, which rumble.c reads as big-endian halfwords
+// (0x2001: on for one frame; 0x0000: end). Stored as a host-order word, its
+// first halfword reads 0x0000 and the vibration test ends before it begins.
+// The same bytes, spelled out.
+u8 mnVibration_804D4FF0[4] = { 0x20, 0x01, 0x00, 0x00 };
+#else
 s32 mnVibration_804D4FF0 = 0x20010000;
+#endif
 SDATA char mnVibration_804D4FF4[] = "jobj.h";
 SDATA char mnVibration_804D4FFC[] = "jobj";
 AnimLoopSettings mnVibration_803EECE0 = { 0.0f, 20.0f, -0.1f };
@@ -137,10 +145,23 @@ typedef struct MnVibrationData {
 } MnVibrationData;
 
 // The asset blocks are also addressed as a contiguous array in Init.
+#ifdef PORT
+// PORT: mnVibration_Init() loads all four through
+// `(&mnVibration_804A0868)[0..3]`, which is the next three statics only
+// where the linker put them end to end. Here assets[1..3] would be whatever
+// follows the first, and the screen would build its tree from joints nothing
+// loaded. One array, with the four names mapped onto its elements.
+static MnVibrationJointAssets port_mnVibration_assets[4];
+#define mnVibration_804A0868 (port_mnVibration_assets[0])
+#define mnVibration_804A0878 (port_mnVibration_assets[1])
+#define mnVibration_804A0888 (port_mnVibration_assets[2])
+#define mnVibration_804A0898 (port_mnVibration_assets[3])
+#else
 static MnVibrationJointAssets mnVibration_804A0868;
 static MnVibrationJointAssets mnVibration_804A0878;
 static MnVibrationJointAssets mnVibration_804A0888;
 static MnVibrationJointAssets mnVibration_804A0898;
+#endif
 
 /// --- Function Implementation ---
 

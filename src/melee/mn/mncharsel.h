@@ -51,4 +51,11 @@ struct MnSelectChrDataTable {
     /* 0x10 */ MnSelectChrModels models;
 };
 
+#ifdef PORT
+#include <melee/mn/forward.h> // CSSIcon
+
+// PORT: the icon table (25 playable icons), for a mod that edits it at run
+// time.
+CSSIcon* mnCharSel_GetIcons(int* count);
+#endif
 #endif

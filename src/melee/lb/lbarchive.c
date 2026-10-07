@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/dat.h> // port_dat_transcode()
+#endif
 #include "lbarchive.h"
 
 #include <stdarg.h>
@@ -128,7 +131,15 @@ void lbArchive_80016EFC(HSD_Archive* archive)
 {
     HSD_ASSERT(0xFC, archive);
     HSD_ASSERT(0xFD, archive->flags & HSD_ARCHIVE_DONT_FREE);
+#ifdef PORT
+    // PORT: the file buffer is `top_ptr`, which HSD_ArchiveParse() sets
+    // (baselib/archive.c). On the console that is also `data` less the
+    // header; here `data` is the transcoder's copy in the DAT arena, and the
+    // 32 bytes before it are not a heap block.
+    lbHeap_80015CA8(0, archive->top_ptr);
+#else
     lbHeap_80015CA8(0, archive->data - sizeof(archive->header));
+#endif
     lbHeap_80015CA8(0, archive);
 }
 
@@ -218,6 +229,16 @@ static inline void Locate(HSD_Archive* archive, intptr_t base_addr)
 int lbArchiveRelocate(HSD_Archive* archive, u8* src, size_t file_size,
                       intptr_t base_addr)
 {
+#ifdef PORT
+    // PORT: replaced whole, as HSD_ArchiveParse() is: the header below is
+    // big-endian. ftData_80085CD8() and ftData_80085E50() (ft/ftdata.c) copy
+    // an animation archive's raw bytes and call this to move its pointers by
+    // the distance between the buffers. The transcoder writes absolute native
+    // addresses into a fresh object graph, so the copy is converted like any
+    // other archive and the delta is not needed.
+    (void) base_addr;
+    return port_dat_transcode(archive, src, file_size);
+#else
     size_t file_offset;
 
     if (archive == NULL) {
@@ -259,6 +280,7 @@ int lbArchiveRelocate(HSD_Archive* archive, u8* src, size_t file_size,
     }
 
     Locate(archive, base_addr);
+#endif
 
     return 0;
 }
