@@ -79,7 +79,13 @@ s32 __CARDFormatRegionAsync(s32 chan, u16 encode, CARDCallback callback)
 
     id = (CARDID*) card->workArea;
     memset(id, 0xff, CARD_SYSTEM_BLOCK_SIZE);
+#ifdef PORT
+    // PORT: a VI register's component-cable bit. The host has no VI
+    // registers, and no cable.
+    viDTVStatus = 0;
+#else
     viDTVStatus = __VIRegs[55];
+#endif
 
     id->encode = encode;
 

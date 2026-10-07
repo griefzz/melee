@@ -37,7 +37,18 @@ void __AXDepopFade(long* hostSum, long* dspVolume, s16* dspDelta)
         if (delta < -0x14) {
             delta = -0x14;
         }
+#ifdef PORT
+        // PORT: dspVolume is the studio block's Hi:Lo halfword pair
+        // (AXSPB.dpop*Hi, *Lo), which the console wrote as one big-endian
+        // long. A host long store puts the low half in Hi, and the DSP reads
+        // the value shifted up 16 bits: a frame of full-scale DC on the bus
+        // whenever a voice stops on a non-zero sample. Split as the DSP reads
+        // it; docs/design/audio.md, "The SDK's AX library".
+        ((u16*) dspVolume)[0] = (u16) ((u32) *hostSum >> 16);
+        ((u16*) dspVolume)[1] = (u16) *hostSum;
+#else
         *dspVolume = *hostSum;
+#endif
         *hostSum -= delta * 0xA0;
         *dspDelta = delta * -1;
         return;

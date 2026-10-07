@@ -448,6 +448,24 @@ void __AXServiceVPB(AXVPB* pvpb)
         *(dst) = *(src);
     }
 
+#ifdef PORT
+    // PORT: the partial address copies below take precedence over the whole
+    // one, and lose AXSetVoiceAddr()'s loop flag, format and addresses when
+    // AXSetVoiceLoopAddr(), EndAddr() or CurrentAddr() follow it before the
+    // next sync. The console's disc interrupts put an AX frame between the
+    // music stream's header and its first block header; the port completes
+    // both reads in one pump, and without this the stream's loop flag stays
+    // zero. A voice's user PB holds the latest of everything, so the whole
+    // copy is the complete answer; docs/design/audio.md, "The SDK's AX
+    // library".
+    if ((sync & AX_SYNC_FLAG_COPYADDR) &&
+        (sync & (AX_SYNC_FLAG_COPYLOOP | AX_SYNC_FLAG_COPYLOOPADDR |
+                 AX_SYNC_FLAG_COPYENDADDR | AX_SYNC_FLAG_COPYCURADDR)))
+    {
+        sync &= ~(AX_SYNC_FLAG_COPYLOOP | AX_SYNC_FLAG_COPYLOOPADDR |
+                  AX_SYNC_FLAG_COPYENDADDR | AX_SYNC_FLAG_COPYCURADDR);
+    }
+#endif
     if (sync & (AX_SYNC_FLAG_COPYLOOP | AX_SYNC_FLAG_COPYLOOPADDR |
                 AX_SYNC_FLAG_COPYENDADDR | AX_SYNC_FLAG_COPYCURADDR))
     {

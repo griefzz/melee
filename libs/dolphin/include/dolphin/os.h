@@ -53,7 +53,20 @@ u32 OSGetPhysicalMemSize(void);
 u32 OSGetConsoleSimulatedMemSize(void);
 
 // Upper words of the masks, since UIMM is only 16 bits
+#ifdef PORT
+// PORT: overridable, so a host build can move the simulated memory map, and
+// 0x8000 unless something defines it first. The port's sanitizer
+// configuration lowers it to 0x2000: AddressSanitizer's shadow on x86-64
+// covers 0x81000000, so MEM1 cannot sit where the console had it. Unsigned,
+// because `OS_BASE_CACHED` is `PREFIX << 16` and a signed 0x8000 lands in
+// the sign bit, so `addr < OS_BASE_CACHED` would answer backwards; the
+// 0x80000000 literals it replaces in lb/ are unsigned too.
+#ifndef OS_CACHED_REGION_PREFIX
+#define OS_CACHED_REGION_PREFIX 0x8000u
+#endif
+#else
 #define OS_CACHED_REGION_PREFIX 0x8000
+#endif
 #define OS_UNCACHED_REGION_PREFIX 0xC000
 #define OS_PHYSICAL_MASK 0x3FFF
 
@@ -70,6 +83,14 @@ u32 __OSSimulatedMemSize : (OS_BASE_CACHED | 0x00F0);
 u32 __OSBusClock : (OS_BASE_CACHED | 0x00F8);
 u32 __OSCoreClock : (OS_BASE_CACHED | 0x00FC);
 int __EXIProbeStartTime[2] : (OS_BASE_CACHED | 0x30C0);
+#elif defined(PORT)
+// PORT: the boot ROM writes these into low memory, and the console reads them
+// through fixed addresses that are not mapped on the host. The port defines
+// __OSBusClock as an ordinary variable holding the console's bus clock
+// (port/sdk/os/os_time.c); __OSCoreClock has no users. Every use goes through
+// OS_BUS_CLOCK and OS_TIMER_CLOCK below.
+extern u32 __OSBusClock;
+extern u32 __OSCoreClock;
 #else
 #define __OSBusClock (*(u32*) (OS_BASE_CACHED | 0x00F8))
 #define __OSCoreClock (*(u32*) (OS_BASE_CACHED | 0x00FC))

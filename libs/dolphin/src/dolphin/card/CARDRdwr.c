@@ -17,7 +17,12 @@ static void BlockReadCallback(long chan, long result)
     if ((result >= 0)) {
         card->xferred += 0x200;
         card->addr += 0x200;
+#ifdef PORT
+        // PORT: MWCC takes a cast as an lvalue; clang does not.
+        card->buffer = (u8*) card->buffer + 0x200;
+#else
         ((u8*) card->buffer) += 0x200;
+#endif
 
         if (--card->repeat > 0) {
             result = __CARDReadSegment(chan, BlockReadCallback);
@@ -63,7 +68,11 @@ static void BlockWriteCallback(long chan, long result)
     if (result >= 0) {
         card->xferred += 0x80;
         card->addr += 0x80;
+#ifdef PORT
+        card->buffer = (u8*) card->buffer + 0x80; // as above
+#else
         ((u8*) card->buffer) += 0x80;
+#endif
 
         if (--card->repeat > 0) {
             result = __CARDWritePage(chan, BlockWriteCallback);

@@ -5,7 +5,13 @@
 #include <dolphin/card.h>
 #include <dolphin/exi.h>
 
+#ifdef PORT
+// PORT: a byte the boot ROM writes into low memory, not mapped on the host.
+// Bit 7 means "the IPL forbade the card"; nothing forbids it here.
+static u8 GameChoice;
+#else
 u8 GameChoice : 0x800030E3;
+#endif
 
 u16 __CARDVendorID = 0xFFFF;
 

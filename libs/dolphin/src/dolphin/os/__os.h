@@ -94,8 +94,10 @@ long long __OSTimeToSystemTime(s64 time);
 void __OSSetTick(register unsigned long newTicks);
 
 // ppc_eabi_init.c
+#ifndef PORT // PORT: MWCC-only syntax, for boot code the port does not have.
 __declspec(section ".init") asm void __init_hardware(void);
 __declspec(section ".init") asm void __flush_cache(void* address, size_t size);
+#endif
 void __init_user(void);
 void __init_cpp(void);
 void __fini_cpp(void);

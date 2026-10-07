@@ -616,7 +616,14 @@ void CARDInit(void)
         OSInitThreadQueue(&card->threadQueue);
         OSCreateAlarm(&card->alarm);
     }
+#ifdef PORT
+    // PORT: the console's boot ROM leaves the disc header at physical 0,
+    // where the host has the executable image. DVDGetCurrentDiskID()
+    // returns the same header.
+    __CARDSetDiskID(DVDGetCurrentDiskID());
+#else
     __CARDSetDiskID((void*) OSPhysicalToCached(0));
+#endif
 
     OSRegisterResetFunction(&ResetFunctionInfo);
 }

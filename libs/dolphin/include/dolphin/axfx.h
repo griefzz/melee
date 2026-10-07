@@ -156,9 +156,17 @@ void AXFXReverbStdCallback(struct AXFX_BUFFERUPDATE* bufferUpdate,
                            struct AXFX_REVERBSTD* reverb);
 
 // axfx.c
+#ifdef PORT
+// PORT: the hooks take size_t, as AXDriverAlloc() does: unsigned long is 32
+// bits on a 64-bit Windows host, and the two signatures would not match.
+void* AXFXAllocFunction(size_t size);
+void AXFXFreeFunction(void* ptr);
+void AXFXSetHooks(void* (*alloc_hook)(size_t), void (*free_hook)(void*));
+#else
 void* AXFXAllocFunction(unsigned long size);
 void AXFXFreeFunction(void* ptr);
 void AXFXSetHooks(void* (*alloc_hook)(unsigned long),
                   void (*free_hook)(void*));
+#endif
 
 #endif // _DOLPHIN_AXFX_H_

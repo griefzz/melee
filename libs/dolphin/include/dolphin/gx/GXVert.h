@@ -28,6 +28,13 @@ volatile PPCWGPipe GXWGFifo : GXFIFO_ADDR;
 #define GXWGFifo (*(volatile PPCWGPipe*) GXFIFO_ADDR)
 #endif
 
+// PORT: a direct store to the write-gather pipe, for the sites that do not
+// go through a GXPosition3f32()-style writer. The identity here; the port's
+// own GXVert.h defines them as calls (docs/design/verification.md, "Direct
+// stores to the write-gather pipe").
+#define GXWG_F32(x) (GXWGFifo.f32 = (x))
+#define GXWG_U8(x) (GXWGFifo.u8 = (x))
+
 #if DEBUG
 
 // external functions
