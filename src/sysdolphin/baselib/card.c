@@ -2154,7 +2154,13 @@ s32 fn_803ACF30(CardState* state, void* comment, void* banner, void* icons)
 
 static inline u8* fn_803ACFC0_header(CardState* state, s32 hdr_offset)
 {
+#ifdef PORT
+    // PORT: an (s32) of a MEM1 address is negative, and it sign-extends on
+    // the way back to a 64-bit pointer.
+    return state->sector_buf + hdr_offset;
+#else
     return (u8*) (hdr_offset + (s32) state->sector_buf);
+#endif
 }
 
 static inline u8* fn_803ACFC0_checksum_start(s32 hdr_offset, CardState* state)
@@ -2212,8 +2218,13 @@ s32 fn_803ACFC0(CardState* state, s32 block_idx, s32 block_id, s32 seq_num,
             (state->sector_size - hdr_offset) - payload_size - 0x20;
         if (remaining != 0) {
             s32 off = payload_size + 0x20;
+#ifdef PORT
+            // PORT: as in fn_803ACFC0_header().
+            memset(state->sector_buf + hdr_offset + off, 0, remaining);
+#else
             s32 addr = (s32) state->sector_buf;
             memset((u8*) (hdr_offset + off + addr), 0, remaining);
+#endif
         }
     }
 

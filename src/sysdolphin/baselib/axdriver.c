@@ -5,6 +5,9 @@
 
 #include "debug.h"
 #include "synth.h"
+#ifdef PORT
+#include <port/audio.h> // port_audio_sem_loaded()
+#endif
 #include <dolphin/ax.h>
 #include <dolphin/axfx.h>
 #include <dolphin/dvd.h>
@@ -38,7 +41,16 @@ static u8 AXDriver_804C5A20[2][0x10]; // unknown type
 /* 4D77B0 */ static s32 AXDriver_804D77B0;
 /* 4D77B4 */ static u32* AXDriver_804D77B4;
 /* 4D77B8 */ static s32 AXDriver_804D77B8;
+#ifdef PORT
+// PORT: the .sem's table of command-script offsets, which
+// AXDriver_8038DA70() relocates in place to addresses. An entry is four bytes
+// in the file, and an array of pointers would index it eight at a time. Each
+// entry holds a pointer into the audio heap truncated to 32 bits, which is
+// exact because the heap is below 4 GB.
+/* 4D77BC */ static u32* AXDriver_804D77BC;
+#else
 /* 4D77BC */ static u32** AXDriver_804D77BC;
+#endif
 /* 4D77C0 */ static s32 AXDriver_804D77C0;
 /* 4D77C4 */ static void* AXDriver_804D77C4;
 /* 4D77C8 */ static int AXDriver_804D77C8;
@@ -624,7 +636,11 @@ int HSD_AudioSFXStartParam(int sound_id, u8 volume, u8 pan, int track,
     }
 
     v->x16 = sound_id;
+#ifdef PORT
+    v->cmd_stream = (u32*) (uintptr_t) AXDriver_804D77BC[sample_idx];
+#else
     v->cmd_stream = AXDriver_804D77BC[sample_idx];
+#endif
     v->x1A = 0xFF;
     v->volume = volume;
     v->x1C = 0x80;
@@ -877,6 +893,13 @@ void AXDriver_8038DA70(const char* path, void (*callback)(void))
 
     DVDClose(&fileInfo);
 
+#ifdef PORT
+    // PORT: the whole file is big-endian 32-bit words: the counts and offsets
+    // below and the command scripts AXDriverInterp() reads. Swapped once
+    // here (port/data/audio_swap.c), so the relocation below adds a native
+    // base to native offsets. See docs/design/audio.md, "Data byte order".
+    port_audio_sem_loaded(AXDriver_804D7798, (size_t) alignedSize);
+#endif
     AXDriver_804D77A0 = ((s32*) AXDriver_804D7798)[0];
     count = AXDriver_804D77A0;
     if (count != 0) {

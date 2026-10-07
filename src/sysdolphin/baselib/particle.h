@@ -36,6 +36,24 @@ psGenerateParticle0(HSD_Particle** head, int linkNo, int bank, u32 kind,
 /* 4D0C54 */ extern HSD_PSFormGroup** psNumCmdList[65];
 /* 4D0D58 */ extern int psCmdListArray[65];
 /* 4D0E5C */ extern HSD_PSCmdList** ptclref_804D0E5C[65];
+
+#ifdef PORT
+// PORT: each of the three tables above points into a particle bank, at a run
+// of 32-bit slots (HSD_PSSlot in psstructs.h). Indexed with the declared
+// type, the stride is eight bytes here and four on the console, so these
+// read the slot and zero-extend it. The #else forms are the console's
+// subscripts.
+#define PS_CMDLIST(bank, idx)                                                 \
+    ((HSD_PSCmdList*) PS_SLOT(((u32*) ptclref_804D0E5C[bank])[idx]))
+#define PS_TEXGROUP(bank, idx)                                                \
+    ((HSD_PSTexGroup*) PS_SLOT(((u32*) psTexGroupArray[bank])[idx]))
+#define PS_FORMGROUP(bank, idx)                                               \
+    ((HSD_PSFormGroup*) PS_SLOT(((u32*) psNumCmdList[bank])[idx]))
+#else
+#define PS_CMDLIST(bank, idx) (ptclref_804D0E5C[bank][idx])
+#define PS_TEXGROUP(bank, idx) (psTexGroupArray[bank][idx])
+#define PS_FORMGROUP(bank, idx) (psNumCmdList[bank][idx])
+#endif
 /* 4D78D8 */ extern u16 hsd_804D78D8;
 /* 4D78DA */ extern u16 hsd_804D78DA;
 /* 4D78DE */ extern u16 hsd_804D78DE;

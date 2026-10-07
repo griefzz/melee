@@ -339,3 +339,14 @@ static void DObjInfoInit(void)
     HSD_DOBJ_INFO(&hsdDObj)->disp = HSD_DObjDisp;
     HSD_DOBJ_INFO(&hsdDObj)->load = DObjLoad;
 }
+
+#ifdef PORT
+// PORT: the sub-frame renderer keys every matrix the game loads by the mesh
+// being displayed; a joint is one owner for a whole fighter, whose load
+// order changes whenever a mesh is hidden. The static has a setter and no
+// getter. See docs/design/subframe-rendering.md, "Identity keys".
+HSD_DObj* HSD_DObjGetCurrent(void)
+{
+    return current_dobj;
+}
+#endif

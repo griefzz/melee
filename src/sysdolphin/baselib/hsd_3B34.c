@@ -178,6 +178,16 @@ extern u16 lbl_8043169C[0xC];
 extern u8 lbl_804316B4[0xC];
 static s32 lbl_804D6398 = 3;
 
+#ifdef PORT
+// PORT: the image is GX's tiled RGB565 in big-endian halfwords, as the
+// console's copy writes them and the port's readback (gfx_copy.c) encodes
+// them, so a pixel is composed from its two bytes, not read as a host u16.
+#define JPEG_PIXEL(i)                                                          \
+    ((u16) ((((const u8*) src)[2 * (i)] << 8) | ((const u8*) src)[2 * (i) + 1]))
+#else
+#define JPEG_PIXEL(i) (src[i])
+#endif
+
 static inline void jpegLumaAddress(s32** dest, u8* work, u32 offset)
 {
     work += 0x118;
@@ -218,16 +228,16 @@ void hsd_803B3408(u8* image, s32 x, s32 y, s32 width, UNUSED s32 height)
 
                 for (chroma_x = 0; chroma_x < 4; chroma_x++) {
                     s32 chroma_index = (chroma_x & 1) + (chroma_x & 2) * 4;
-                    pixel = src[((chroma_x & 1) * 2 + (chroma_x & 2) * 4) +
-                                src_row];
+                    pixel = JPEG_PIXEL(((chroma_x & 1) * 2 + (chroma_x & 2) * 4) +
+                                       src_row);
 
                     ((JpegWork*) HSD_804D2648_BUF)
                         ->x518[(u32) chroma_index + dst_row] =
                         (s32) ((0.5f * (f32) ((pixel * 8) & 0xF8)) +
                                ((-0.1687f * (f32) ((pixel >> 8U) & 0xF8)) -
                                 (0.3313f * (f32) ((pixel >> 3U) & 0xFC))));
-                    pixel = src[((chroma_x & 1) * 2 + (chroma_x & 2) * 4) +
-                                src_row];
+                    pixel = JPEG_PIXEL(((chroma_x & 1) * 2 + (chroma_x & 2) * 4) +
+                                       src_row);
                     ((JpegWork*) HSD_804D2648_BUF)
                         ->x618[chroma_index + dst_row] =
                         (s32) (((0.5f * (f32) ((pixel >> 8U) & 0xF8)) -
@@ -245,8 +255,8 @@ void hsd_803B3408(u8* image, s32 x, s32 y, s32 width, UNUSED s32 height)
                         (tile_x * 4 + ((tile_y * 4 + luma_y) * 8 + luma_x)) *
                             4);
                     for (pixel_index = 0; pixel_index != 4; pixel_index++) {
-                        pixel = src[(pixel_index & 1) * 0x20 +
-                                    (pixel_index & 2) * stride];
+                        pixel = JPEG_PIXEL((pixel_index & 1) * 0x20 +
+                                           (pixel_index & 2) * stride);
                         luma_base[pixel_index * 64] =
                             (s32) ((s32) ((0.114f *
                                            (f32) ((pixel * 8) & 0xF8)) +
@@ -474,6 +484,20 @@ static inline void writeBits(s32 value, s32 length)
     }
 }
 
+#ifdef PORT
+// PORT: a code from an AC table as the console reads it, a big-endian
+// halfword in a byte array (see hsd_803B3CD8()).
+static inline u16 jpegAcCode(const u16* table, s32 i)
+{
+    const u8* p = (const u8*) table;
+
+    return (u16) ((p[2 * i] << 8) | p[2 * i + 1]);
+}
+#define AC_CODE(i) jpegAcCode(ac_code, (i))
+#else
+#define AC_CODE(i) (ac_code[i])
+#endif
+
 void hsd_803B3CD8(s32 component)
 {
     JpegWork* work = &hsd_804D2648;
@@ -492,9 +516,28 @@ void hsd_803B3CD8(s32 component)
 
     dc_code = component == 0 ? lbl_80431678 : lbl_8043169C;
     dc_length = component == 0 ? lbl_80431690 : lbl_804316B4;
+#ifdef PORT
+    // PORT: JpegEncodeTables is cast over lbl_80430C40 (0x40 bytes) and
+    // lbl_80430C80 (0x410) as one 0x450-byte object, consecutive on the
+    // console and wherever the compiler put them here. Its u16 code tables
+    // are big-endian bytes in a byte array. Each table is read from the array
+    // that holds it, at the struct's offset less the first array's 0x40, and
+    // a code is composed from its two bytes (AC_CODE).
+    (void) tables;
+    ac_code = (u16*) (lbl_80430C80 +
+                      (component == 0
+                           ? offsetof(JpegEncodeTables, ac_code_luma) - 0x40
+                           : offsetof(JpegEncodeTables, ac_code_chroma) -
+                                 0x40));
+    ac_length =
+        lbl_80430C80 +
+        (component == 0 ? offsetof(JpegEncodeTables, ac_length_luma) - 0x40
+                        : offsetof(JpegEncodeTables, ac_length_chroma) - 0x40);
+#else
     ac_code = component == 0 ? tables->ac_code_luma : tables->ac_code_chroma;
     ac_length =
         component == 0 ? tables->ac_length_luma : tables->ac_length_chroma;
+#endif
 
     value = work->coef[0] - work->prev_dc[component];
     run = 0;
@@ -517,10 +560,10 @@ void hsd_803B3CD8(s32 component)
         ac_value = coefficient;
         if (coefficient != 0) {
             length = bitLength(run + 1);
-            writeBits(ac_code[length], ac_length[length]);
+            writeBits(AC_CODE(length), ac_length[length]);
             writeBits(run + 1, length);
             length = bitLength(abs(ac_value));
-            writeBits(ac_code[length], ac_length[length]);
+            writeBits(AC_CODE(length), ac_length[length]);
             if (ac_value < 0) {
                 ac_value--;
             }
@@ -531,7 +574,7 @@ void hsd_803B3CD8(s32 component)
         }
     }
     if (run != 0) {
-        writeBits(ac_code[0], ac_length[0]);
+        writeBits(AC_CODE(0), ac_length[0]);
     }
 }
 
@@ -791,7 +834,13 @@ struct hsd_803B51C8_inline_state {
 };
 
 static inline s32
+#ifdef PORT
+// PORT: the image's address at pointer width. As an s32, a MEM1 address is
+// negative and sign-extends when it becomes a pointer again.
+hsd_803B51C8_inline(intptr_t image, s32 image_height, s32 image_width,
+#else
 hsd_803B51C8_inline(s32 image, s32 image_height, s32 image_width,
+#endif
                     const char* output, s32 output_capacity,
                     const JpegMetadata* metadata, JpegComment* comment,
                     JpegHuffDc* huff_dc_luma, JpegHuffDc* huff_dc_chroma,
@@ -1054,7 +1103,11 @@ hsd_803B51C8_inline(s32 image, s32 image_height, s32 image_width,
     return hsd_804D79A0 - hsd_804D79A4;
 }
 
+#ifdef PORT
+s32 hsd_803B51C8(intptr_t arg0, s32 arg1, s32 arg2, char* arg3, s32 arg4)
+#else
 s32 hsd_803B51C8(s32 arg0, s32 arg1, s32 arg2, char* arg3, s32 arg4)
+#endif
 {
     JpegComment comment;
     JpegHuffDc huff_dc_luma;

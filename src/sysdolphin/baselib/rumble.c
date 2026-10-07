@@ -162,13 +162,35 @@ void HSD_Rumble_80378524(int a)
     OSRestoreInterrupts(intrEnabled);
 }
 
+#ifdef PORT
+// PORT: a rumble pattern is a stream of big-endian 16-bit words, the top
+// three bits the opcode and the low thirteen its argument. The decomp reads
+// it through RumbleCommand, `u16 op : 3; u16 frame : 13;`, which MWCC fills
+// from the top of the halfword and clang from the bottom, and the halfword is
+// in the other byte order here. The stream stays in disc order and is read
+// explicitly, as the SIS glyph stream is: swapping it in place would put the
+// bytes right and leave the bitfield backwards.
+static u16 port_rumble_word(const HSD_Rumble* p)
+{
+    const u8* q = (const u8*) p;
+
+    return (u16) (((u16) q[0] << 8) | q[1]);
+}
+
+#define RUMBLE_OP(p) ((port_rumble_word(p) >> 13) & 7)
+#define RUMBLE_ARG(p) (port_rumble_word(p) & 0x1FFF)
+#else
+#define RUMBLE_OP(p) ((p)->command.op)
+#define RUMBLE_ARG(p) ((p)->command.frame)
+#endif
+
 int HSD_PadRumbleInterpret1(HSD_PadRumbleListData* a, u8* b)
 {
     if (a->pause == 1) {
         return 0;
     }
     while (a->wait == 0) {
-        switch (a->listp->command.op) {
+        switch (RUMBLE_OP(a->listp)) {
         case 0:
             if (a->frame == -2) {
                 return 1;
@@ -177,21 +199,21 @@ int HSD_PadRumbleInterpret1(HSD_PadRumbleListData* a, u8* b)
             break;
         case 1:
             a->status = 2;
-            a->wait = a->listp->command.frame;
+            a->wait = RUMBLE_ARG(a->listp);
             a->listp++;
             break;
         case 2:
             a->status = 1;
-            a->wait = a->listp->command.frame;
+            a->wait = RUMBLE_ARG(a->listp);
             a->listp++;
             break;
         case 3:
             a->status = 0;
-            a->wait = a->listp->command.frame;
+            a->wait = RUMBLE_ARG(a->listp);
             a->listp++;
             break;
         case 4:
-            a->loop_count = a->listp->command.frame;
+            a->loop_count = RUMBLE_ARG(a->listp);
             a->listp++;
             a->stack = a->listp;
             break;

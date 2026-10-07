@@ -32,6 +32,27 @@ enum HSD_ParticleKind {
     DispLighting = 1 << 31
 };
 
+#ifdef PORT
+// PORT: a pointer inside a particle bank. The transcoder byte-swaps a bank
+// and keeps its layout, because every offset in it is relative to the bank's
+// own base, so a pointer inside it is a 32-bit slot that
+// psInitDataBankLocate() turns from an offset into an address. The DAT arena
+// is below 4 GB, so the slot is the whole address, and it is zero-extended on
+// the way out: through an s32, a bank at 0x82xxxxxx sign-extends. See
+// docs/design/dat-transcoder.md, "Particle banks".
+typedef u32 HSD_PSSlot;
+typedef u32 ps_word;
+#define PS_SLOT(x) ((void*) (uintptr_t) (u32) (x))
+// PORT: the bank's own base, narrowed to what a slot holds; below 4 GB, the
+// low half is the whole address.
+#define PS_BASE(p) ((ps_word) (uintptr_t) (p))
+#else
+typedef u8* HSD_PSSlot;
+typedef s32 ps_word;
+#define PS_SLOT(x) ((void*) (x))
+#define PS_BASE(p) ((ps_word) (p))
+#endif
+
 /* size: 0x1C */
 typedef struct _HSD_PSTexGroup {
     u32 num; /* 0x0 */
@@ -45,13 +66,13 @@ typedef struct _HSD_PSTexGroup {
     u16 palnum;  /* 0x14 */
     u16 palflag; /* 0x16 */
 
-    u8* texTable[1]; /* 0x18 */
+    HSD_PSSlot texTable[1]; /* 0x18 */
 } HSD_PSTexGroup;
 
 /* size: 0x8 */
 typedef struct _HSD_PSFormGroup {
     u32 num;          /* 0x0 */
-    u8* formTable[1]; /* 0x4 */
+    HSD_PSSlot formTable[1]; /* 0x4 */
 } HSD_PSFormGroup;
 
 /* size: 0x40 */

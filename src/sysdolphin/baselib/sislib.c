@@ -455,10 +455,30 @@ void HSD_SisLib_803A5FBC(void)
     HSD_Free(HSD_SisLib_804D796C);
 }
 
+#ifdef PORT
+// PORT: HSD_SisLib_803A6048() scales the heap by SisBuffer's block. These
+// hold that to being the widest block the heap is asked for; on the console
+// HSD_Text is 160 bytes and a sislib_UnkAlloc3 16, each with a 12-byte
+// header.
+_Static_assert(sizeof(sislib_UnkAlloc3) <= sizeof(SisBuffer),
+               "sislib_UnkAlloc3 outgrew the SIS heap's scale");
+_Static_assert((sizeof(HSD_Text) + sizeof(SisBlock)) * 28 <=
+                   (160 + 12) * (sizeof(SisBuffer) + sizeof(SisBlock)),
+               "HSD_Text outgrew the SIS heap's scale");
+#endif
 void HSD_SisLib_803A6048(size_t size)
 {
     int i;
 
+#ifdef PORT
+    // PORT: every caller sizes this heap in console bytes, for console-sized
+    // blocks. The block that grows most is a SisBuffer or sislib_UnkAlloc3
+    // with its SisBlock header, 28 bytes there and 48 here (HSD_Text's is 172
+    // against 216). Scaled by that ratio, any run of allocations that fits
+    // the console's heap fits this one; on PowerPC the ratio is 1.
+    size = (size * (sizeof(SisBuffer) + sizeof(SisBlock)) + 27) / 28;
+    size = (size + 3) & ~(size_t) 3;
+#endif
     HSD_SisLib_804D7968 = size;
     used_head = NULL;
     HSD_SisLib_804D796C = free_head = HSD_MemAlloc(HSD_SisLib_804D7968);

@@ -1,4 +1,7 @@
 #include "cobj.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <math.h>
 #include <placeholder.h>
@@ -281,7 +284,16 @@ static bool setupNormalCamera(HSD_CObj* cobj)
     bottom = cobj->scissor.bottom * y_scale;
     width = right - left;
     height = bottom - top;
+#ifdef PORT
+    // PORT: each converts as the console's __cvt_fp2unsigned does. A
+    // negative width or height is 0 there and a four-billion-pixel scissor
+    // through the host's conversion. See docs/design/verification.md,
+    // "Floats converted to unsigned".
+    GXSetScissor(port_cvt_fp2unsigned(left), port_cvt_fp2unsigned(top),
+                 port_cvt_fp2unsigned(width), port_cvt_fp2unsigned(height));
+#else
     GXSetScissor(left, top, width, height);
+#endif
 
     projection_type = makeProjectionMtx(cobj, p);
     GXSetProjection(p, projection_type);
@@ -323,7 +335,14 @@ static bool setupTopHalfCamera(HSD_CObj* cobj)
     bottom = bottom < rmode->efbHeight ? bottom : rmode->efbHeight;
     width = right - left;
     height = bottom - top;
+#ifdef PORT
+    // PORT: as in setupNormalCamera(): a viewport starting below the clamped
+    // bottom is a height of 0 on the console.
+    GXSetScissor(port_cvt_fp2unsigned(left), port_cvt_fp2unsigned(top),
+                 port_cvt_fp2unsigned(width), port_cvt_fp2unsigned(height));
+#else
     GXSetScissor(left, top, width, height);
+#endif
     top = cobj->viewport.ymin;
     bottom = cobj->viewport.ymax;
     left = cobj->viewport.xmin;
@@ -401,7 +420,14 @@ static bool setupBottomHalfCamera(HSD_CObj* cobj)
     bottom = cobj->scissor.bottom - screen_top;
     width = right - left;
     height = bottom - top;
+#ifdef PORT
+    // PORT: a scissor ending above screen_top makes the height negative: 0
+    // on the console, a four-billion-pixel scissor on the host.
+    GXSetScissor(port_cvt_fp2unsigned(left), port_cvt_fp2unsigned(top),
+                 port_cvt_fp2unsigned(width), port_cvt_fp2unsigned(height));
+#else
     GXSetScissor(left, top, width, height);
+#endif
 
     top = cobj->viewport.ymin;                   // lfs f4,0x14(r30)
     left = cobj->viewport.xmin;                  // lfs f1,0xc(r30)

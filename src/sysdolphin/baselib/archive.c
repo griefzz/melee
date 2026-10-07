@@ -3,6 +3,11 @@
 #include <string.h>
 
 #include <dolphin/os.h>
+#ifdef PORT
+#include <port/archive_extern.h> // port_archive_extern_declined()
+#include <port/dat.h>
+#include <port/dat.h> // port_dat_transcode(), port_dat_locate_extern()
+#endif
 
 static inline void Locate(HSD_Archive* archive)
 {
@@ -17,6 +22,15 @@ static inline void Locate(HSD_Archive* archive)
 
 s32 HSD_ArchiveParse(HSD_Archive* archive, u8* src, size_t file_size)
 {
+#ifdef PORT
+    // PORT: replaced whole. The header is big-endian, and the archive's
+    // pointers are four bytes where the host's are eight, so relocating in
+    // place cannot work. The transcoder walks the archive from its root
+    // symbols, writes a native object graph and returns an HSD_Archive whose
+    // pointers are already absolute, which leaves Locate() nothing to do.
+    // See docs/design/dat-transcoder.md.
+    return port_dat_transcode(archive, src, file_size);
+#else
     u32 offset;
 
     if (archive == NULL) {
@@ -62,6 +76,7 @@ s32 HSD_ArchiveParse(HSD_Archive* archive, u8* src, size_t file_size)
     Locate(archive);
 
     return 0;
+#endif
 }
 
 void* HSD_ArchiveGetPublicAddress(HSD_Archive* archive, const char* symbols)
@@ -93,6 +108,27 @@ char* HSD_ArchiveGetExtern(HSD_Archive* archive, int index)
 void HSD_ArchiveLocateExtern(HSD_Archive* archive, const char* symbols,
                              void* addr)
 {
+#ifdef PORT
+    // PORT: the chain is threaded through the file's data block, each slot
+    // holding the console offset of the next, and `archive->data` is the
+    // transcoder's native image, where the slots are eight-byte pointers at
+    // other offsets. Walked here, the offsets index nothing and the walk does
+    // not end. The transcoder flattens each chain as it converts, and this
+    // writes through the native slots it recorded. See
+    // docs/design/dat-transcoder.md, "Extern chains".
+    {
+        int n = port_dat_locate_extern(archive, symbols, addr);
+
+        if (n < 0) {
+            // PORT: the chains were never flattened (the archive did not
+            // come through the transcoder, or the registry was full). Counted
+            // rather than guessed at, since none patched and none looked for
+            // are different answers.
+            port_archive_extern_declined(symbols);
+        }
+    }
+    return;
+#else
     u32 offset = -1U;
     u32 i;
 
@@ -116,4 +152,5 @@ void HSD_ArchiveLocateExtern(HSD_Archive* archive, const char* symbols,
         *slot = (uintptr_t) addr;
         offset = next;
     }
+#endif
 }

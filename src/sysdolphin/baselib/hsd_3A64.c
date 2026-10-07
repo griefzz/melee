@@ -238,7 +238,15 @@ int HSD_SisLib_803A6B98(HSD_Text* text, float x, float y, const char* fmt, ...)
     encoded[0] = 0;
     if (fmt) {
         va_start(args, fmt);
+#ifdef PORT
+        // PORT: MSL's vsnprintf reads -1 as unbounded. The port's build
+        // leaves out MSL's printf.c (cmake/DecompSources.cmake), so this is
+        // the host's, and glibc's drops the last character for a size above
+        // INT_MAX. The destination is a fixed local, so it is the bound.
+        vsnprintf((char*) buffer, sizeof(buffer), fmt, args);
+#else
         vsnprintf((char*) buffer, -1, fmt, args);
+#endif
         va_end(args);
         encoded_len = HSD_SisLib_803A67EC(encoded, buffer);
     }
@@ -367,7 +375,12 @@ s32 HSD_SisLib_803A70A0(HSD_Text* text, s32 entry_idx, char* fmt, ...)
         playhead = entry + 0xE;
         if (fmt != NULL) {
             va_start(args, fmt);
+#ifdef PORT
+            // PORT: as in HSD_SisLib_803A6B98() above.
+            vsnprintf((char*) buffer, sizeof(buffer), fmt, args);
+#else
             vsnprintf((char*) buffer, -1, fmt, args);
+#endif
             va_end(args);
             new_size = HSD_SisLib_803A67EC(encoded, buffer);
         } else {

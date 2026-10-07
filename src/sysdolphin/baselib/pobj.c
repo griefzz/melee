@@ -545,6 +545,52 @@ static inline void decode_s8_xyz(void* src_base, f32 dst[3], int scale)
     dst[2] = (f32) src[2] / scale;
 }
 
+#ifdef PORT
+// PORT: a shape animation's morph targets are the one vertex pool
+// sysdolphin reads with the CPU. The transcoder leaves vertex arrays in the
+// console's byte order, because other PObjs share them and the GX loader
+// reads them big-endian, so these reads swap on the way in, as this file's
+// GX_INDEX16 index reads already do. The decoded floats go out through
+// GXPosition3f32(), which takes host floats.
+static inline u16 shape_be16(const void* p)
+{
+    const u8* b = p;
+    return (u16) ((b[0] << 8) | b[1]);
+}
+
+static inline f32 shape_be32f(const void* p)
+{
+    const u8* b = p;
+    u32 v = ((u32) b[0] << 24) | ((u32) b[1] << 16) | ((u32) b[2] << 8) | b[3];
+    f32 f;
+    memcpy(&f, &v, sizeof(f));
+    return f;
+}
+
+static inline void shape_be32f_copy(const void* src, f32* dst, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        dst[i] = shape_be32f((const u8*) src + i * 4);
+    }
+}
+
+static inline void decode_u16_xyz(void* src_base, f32 dst[3], int scale)
+{
+    u8* src = src_base;
+    dst[0] = (f32) shape_be16(src + 0) / scale;
+    dst[1] = (f32) shape_be16(src + 2) / scale;
+    dst[2] = (f32) shape_be16(src + 4) / scale;
+}
+
+static inline void decode_s16_xyz(void* src_base, f32 dst[3], int scale)
+{
+    u8* src = src_base;
+    dst[0] = (f32) (s16) shape_be16(src + 0) / scale;
+    dst[1] = (f32) (s16) shape_be16(src + 2) / scale;
+    dst[2] = (f32) (s16) shape_be16(src + 4) / scale;
+}
+#else
 static inline void decode_u16_xyz(void* src_base, f32 dst[3], int scale)
 {
     u16* src = src_base;
@@ -560,6 +606,7 @@ static inline void decode_s16_xyz(void* src_base, f32 dst[3], int scale)
     dst[1] = (f32) src[1] / scale;
     dst[2] = (f32) src[2] / scale;
 }
+#endif
 
 static void get_shape_vertex_xyz(HSD_ShapeSet* shape_set, int shape_id,
                                  int arrayidx, f32 dst[3])
@@ -580,7 +627,11 @@ static void get_shape_vertex_xyz(HSD_ShapeSet* shape_set, int shape_id,
                idx * shape_set->vertex_desc->stride;
 
     if (shape_set->vertex_desc->comp_type == GX_F32) {
+#ifdef PORT
+        shape_be32f_copy(src_base, dst, 3);
+#else
         memcpy(dst, src_base, sizeof(f32[3]));
+#endif
     } else {
         int decimal_point = 1 << shape_set->vertex_desc->frac;
         switch (shape_set->vertex_desc->comp_type) {
@@ -625,7 +676,11 @@ static void get_shape_normal_xyz(HSD_ShapeSet* shape_set, int shape_id,
                idx * shape_set->normal_desc->stride;
 
     if (shape_set->normal_desc->comp_type == GX_F32) {
+#ifdef PORT
+        shape_be32f_copy(src_base, dst, 3);
+#else
         memcpy(dst, src_base, sizeof(f32[3]));
+#endif
     } else {
         int decimal_point = 1 << shape_set->normal_desc->frac;
         switch (shape_set->normal_desc->comp_type) {
@@ -669,7 +724,11 @@ static void get_shape_nbt_xyz(HSD_ShapeSet* shape_set, int shape_id,
                idx * shape_set->normal_desc->stride;
 
     if (shape_set->normal_desc->comp_type == GX_F32) {
+#ifdef PORT
+        shape_be32f_copy(src_base, dst, 9);
+#else
         memcpy(dst, src_base, sizeof(f32[9]));
+#endif
     } else {
         int decimal_point = 1 << shape_set->normal_desc->frac;
         switch (shape_set->normal_desc->comp_type) {
@@ -685,12 +744,22 @@ static void get_shape_nbt_xyz(HSD_ShapeSet* shape_set, int shape_id,
             break;
         case GX_U16:
             for (i = 0; i < 9; i++) {
+#ifdef PORT
+                dst[i] = (float) shape_be16((u8*) src_base + i * 2) /
+                         decimal_point;
+#else
                 dst[i] = (float) ((u16*) src_base)[i] / decimal_point;
+#endif
             }
             break;
         case GX_S16:
             for (i = 0; i < 9; i++) {
+#ifdef PORT
+                dst[i] = (float) (s16) shape_be16((u8*) src_base + i * 2) /
+                         decimal_point;
+#else
                 dst[i] = (float) ((s16*) src_base)[i] / decimal_point;
+#endif
             }
             break;
         default:

@@ -5,6 +5,9 @@
 #include "rumble.h"
 #include <dolphin/os.h>
 #include <dolphin/pad.h>
+#ifdef PORT
+#include <port/hooks.h> // port_hook_pad_raw_read()
+#endif
 
 HSD_PadStatus default_status_data = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
@@ -63,6 +66,12 @@ void HSD_PadRenewRawStatus(bool err_check)
 
     HSD_PadRumbleInterpret();
     PADRead(now.stat);
+#ifdef PORT
+    // PORT: hook pad_raw_read, with the raw reports before they are queued:
+    // where Slippi's in-game delay swaps them for older ones
+    // (HSD_PadRenewRawStatus+0x28).
+    port_hook_pad_raw_read(now.stat);
+#endif
     if (err_check) {
         for (i = 0; i < 4; i++) {
             if (!now.stat[i].err) {

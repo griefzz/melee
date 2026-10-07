@@ -6,6 +6,11 @@
 
 #include "debug.h"
 #include "devcom.h"
+#ifdef PORT
+#include <port/audio.h> // the audio files' byte order, PORT_AX_U16PAIR_*
+#include <port/aram.h>  // port_arq_pump()
+#include <port/dvd.h>   // port_dvd_pump()
+#endif
 #include <dolphin/ai.h>
 #include <dolphin/ar.h>
 #include <dolphin/ax.h>
@@ -58,7 +63,14 @@ static struct HSD_Synth_804C2A60_t {
     /* 08 */ void (*x8)(int, int);
     /* 0C */ int xC;
 } HSD_Synth_804C2A60[6];
+#ifdef PORT
+// PORT: a DMA destination (HSD_SynthSFXLoadNewProc()), and
+// HSD_DevComRequest() asserts `dest % 32 == 0`. The console's linker aligned
+// it; clang has no reason to.
+static u32 hsd_SynthSFXLoadBuf[0x20 / 4] ATTRIBUTE_ALIGN(32);
+#else
 static u32 hsd_SynthSFXLoadBuf[0x20 / 4];
+#endif
 static AXVPB* HSD_Synth_804C2AE0[0x80 / 4];
 static int hsd_SynthSFXBank[0x80 / 4];
 static int hsd_SynthSFXBankHead[0x84 / 4];
@@ -81,7 +93,15 @@ static struct pstHakoHeader_t {
     /* 04 */ s32 x4;
     /* 08 */ s32 x8;
     /* 0C */ char pad[0x14];
+#ifdef PORT
+    // PORT: the music stream's block headers are read by DMA into this
+    // array, and HSD_DevComRequest() asserts `dest % 32 == 0`. The console
+    // met that by layout: 0x804C4540 is 32-byte aligned and an element is
+    // exactly 0x20 bytes. Clang aligns the array to 4.
+} ATTRIBUTE_ALIGN(32) pstHakoHeader[3];
+#else
 } pstHakoHeader[3];
+#endif
 
 /* 4D7720 */ static int HSD_Synth_804D7720;
 /* 4D7724 */ static int hsd_SynthSFXBankNum;
@@ -132,7 +152,17 @@ static int HSD_Synth_804D6028[2] = { 0 };
 static float HSD_Synth_804D6030 = 1.0f;
 
 struct SfxLoadStreamNode {
+#ifdef PORT
+    // PORT: a pointer kept in four bytes. The bank image this heads is built
+    // by byte arithmetic on the console's layout (the group data copied to
+    // +8, voice blocks 0x40 apart, the next node at +0x10 + 0x40 * n), and
+    // every reader takes the same offsets, so the struct keeps them. Every
+    // node is in the audio heap in MEM1, below 4 GB, so the truncated pointer
+    // widens back exactly.
+    /* 0x00 */ u32 x0;
+#else
     /* 0x00 */ struct SfxLoadStreamNode* x0;
+#endif
     /* 0x04 */ s32 x4;
     /* 0x08 */ s32 x8;
     /* 0x0C */ s32 xC;
@@ -144,6 +174,21 @@ static inline s32 SfxLoadStreamDataSize(s32 size)
 {
     return size + 8;
 }
+#ifdef PORT
+// PORT: the bank list HSD_Synth_804C2AE0 chains SfxLoadStreamNodes but
+// reads them through AXVPB*, whose first six console fields sit on the
+// node's x0..x14: next = x0, prev = x4 (entrynum), next1 = x8 (base id),
+// priority = xC (count), callback = x10 (ARAM address), userContext = x14
+// (size). Here AXVPB's pointers are eight bytes and the node's link four, so
+// the node is read as itself.
+#define BANK_NODE(v) ((struct SfxLoadStreamNode*) (v))
+#define BANK_NEXT(v) ((AXVPB*) (uintptr_t) BANK_NODE(v)->x0)
+#define BANK_ENTRYNUM(v) (BANK_NODE(v)->x4)
+#define BANK_BASE(v) (BANK_NODE(v)->x8)
+#define BANK_COUNT(v) (BANK_NODE(v)->xC)
+#define BANK_ARAM(v) (BANK_NODE(v)->x10)
+#define BANK_SIZE(v) (BANK_NODE(v)->x14)
+#endif
 
 static void HSD_SynthSFXSampleLoadCallback(int result, uintptr_t args,
                                            void* addr, bool cancelflag)
@@ -176,15 +221,38 @@ static void HSD_SynthSFXSampleLoadCallback(int result, uintptr_t args,
                 hsd_SynthSFXLoadBuf[4U + i];
         }
         HSD_Synth_804D7734 = (u32*) ((u8*) HSD_Synth_804D7730 + (dnw & ~3));
+#ifdef PORT
+        // PORT: the group table is assembled now, the header's second half
+        // in front of the block the disc read. Swapped here, once, before the
+        // walk below reads a count out of it (port/data/audio_swap.c).
+        port_audio_ssm_groups_loaded(HSD_Synth_804D7734, total - (dnw & ~3),
+                                     hsd_SynthSFXLoadBuf[2]);
+#endif
 
         bankID = HSD_Synth_804C2A60[0].bankID;
         pp = &HSD_Synth_804C2AE0[bankID];
+#ifdef PORT
+        if (*pp == NULL) {
+            *pp = (AXVPB*) HSD_Synth_804D7730;
+        } else {
+            AXVPB* tail = *pp;
+            while (BANK_NEXT(tail) != NULL) {
+                tail = BANK_NEXT(tail);
+            }
+            BANK_NODE(tail)->x0 = (u32) (uintptr_t) HSD_Synth_804D7730;
+        }
+#else
         while (*pp != NULL) {
             pp = &(*pp)->next;
         }
         *pp = (AXVPB*) HSD_Synth_804D7730;
+#endif
 
+#ifdef PORT
+        HSD_Synth_804D7730->x0 = 0;
+#else
         HSD_Synth_804D7730->x0 = NULL;
+#endif
         HSD_Synth_804D7730->x4 = HSD_Synth_804C2A60[0].entrynum;
         HSD_Synth_804D7730->x10 = hsd_SynthSFXBank[bankID];
         HSD_Synth_804D7730->x14 = hsd_SynthSFXLoadBuf[1];
@@ -203,9 +271,39 @@ static void HSD_SynthSFXSampleLoadCallback(int result, uintptr_t args,
             n = *HSD_Synth_804D7734;
             (void) n;
             nbytes = SfxLoadStreamDataSize(n << 6);
+#ifdef PORT
+            // PORT: the destination advances 8 bytes more per group than the
+            // source, so by the last groups the ranges overlap, the
+            // destination below. MWCC's memcpy copied forward, which the
+            // layout needs; the host's promises nothing for overlapping
+            // ranges, and memmove does. Correct on PowerPC as well.
+            memmove((u8*) HSD_Synth_804D7730 + 8, HSD_Synth_804D7734, nbytes);
+#else
             memcpy((u8*) HSD_Synth_804D7730 + 8, HSD_Synth_804D7734, nbytes);
+#endif
             for (k = 0; k < n; k++) {
                 u8* e = (u8*) HSD_Synth_804D7730 + k * 0x40;
+#ifdef PORT
+                // PORT: the three addresses are AXPBADDR halfword pairs
+                // (loop, end, current), which the console adds to as one
+                // big-endian word. Host halfwords read as a word give lo:hi,
+                // so the pair is composed and split by hand. The #else arm's
+                // `e + 0x10 != NULL` is always true.
+                {
+                    AXPBADDR* a = (AXPBADDR*) (e + 0x10);
+                    u32 v;
+                    v = PORT_AX_U16PAIR_GET(a->loopAddressHi, a->loopAddressLo);
+                    PORT_AX_U16PAIR_SET(a->loopAddressHi, a->loopAddressLo,
+                                        v + hsd_SynthSFXBank[bankID] * 2);
+                    v = PORT_AX_U16PAIR_GET(a->endAddressHi, a->endAddressLo);
+                    PORT_AX_U16PAIR_SET(a->endAddressHi, a->endAddressLo,
+                                        v + hsd_SynthSFXBank[bankID] * 2);
+                    v = PORT_AX_U16PAIR_GET(a->currentAddressHi,
+                                            a->currentAddressLo);
+                    PORT_AX_U16PAIR_SET(a->currentAddressHi, a->currentAddressLo,
+                                        v + hsd_SynthSFXBank[bankID] * 2);
+                }
+#else
                 if (e + 0x10 != NULL) {
                     *(u32*) (e + 0x14) += hsd_SynthSFXBank[bankID] * 2;
                 } else {
@@ -215,12 +313,17 @@ static void HSD_SynthSFXSampleLoadCallback(int result, uintptr_t args,
                     hsd_SynthSFXBank[bankID] * 2;
                 *(u32*) ((u8*) HSD_Synth_804D7730 + k * 0x40 + 0x1C) +=
                     hsd_SynthSFXBank[bankID] * 2;
+#endif
             }
             id = base + i;
             HSD_Synth_804D7730->x4 = id;
             id &= 0x1F;
             bucket = &hsd_SynthSFXDataHash[id];
+#ifdef PORT
+            HSD_Synth_804D7730->x0 = (u32) (uintptr_t) *bucket;
+#else
             HSD_Synth_804D7730->x0 = (struct SfxLoadStreamNode*) *bucket;
+#endif
             *bucket = HSD_Synth_804D7730;
             HSD_Synth_804D7734 += (u32) nbytes >> 2;
             HSD_Synth_804D7730 =
@@ -256,6 +359,11 @@ static void HSD_SynthSFXHeaderLoadCallback(int result, uintptr_t args,
     if (HSD_Synth_804D7738 == 0) {
         int bankID = HSD_Synth_804C2A60[0].bankID;
 
+#ifdef PORT
+        // PORT: swaps the 0x20-byte header just read off the disc
+        // (port/data/audio_swap.c).
+        port_audio_ssm_header_loaded(hsd_SynthSFXLoadBuf);
+#endif
         HSD_ASSERTREPORT(0xCD,
                          hsd_SynthSFXBankHead[bankID + 1] -
                                  hsd_SynthSFXBank[bankID] >=
@@ -394,9 +502,15 @@ static void order_data_0(void)
 static void HSD_SynthSFXGroupDataUnlink(AXVPB* vpb)
 {
     int i;
+#ifdef PORT
+    for (i = 0; i < BANK_COUNT(vpb); i++) {
+        HSD_SynthSFXDataUnlink(BANK_BASE(vpb) + i);
+    }
+#else
     for (i = 0; i < vpb->priority; i++) {
         HSD_SynthSFXDataUnlink((int) vpb->next1 + i);
     }
+#endif
 }
 
 void HSD_SynthSFXUnloadBank(int bank_id)
@@ -408,7 +522,11 @@ void HSD_SynthSFXUnloadBank(int bank_id)
         AXVPB* cur;
         HSD_SynthSFXGroupDataUnlink(*head);
         cur = *head;
+#ifdef PORT
+        *head = BANK_NEXT(*head);
+#else
         *head = (*head)->next;
+#endif
         HSD_AudioFree(cur);
     }
     hsd_SynthSFXBank[bank_id] = hsd_SynthSFXBankHead[bank_id];
@@ -416,6 +534,29 @@ void HSD_SynthSFXUnloadBank(int bank_id)
 
 void HSD_SynthSFXDataUnlink(int sfx_id)
 {
+#ifdef PORT
+    // PORT: the console walks the bucket and the nodes' first words with one
+    // `void**`; here the bucket slot is eight bytes and a node's link four
+    // (SfxLoadStreamNode), so the two steps are spelled out.
+    void** bucket = &hsd_SynthSFXDataHash[sfx_id & 0x1F];
+    struct SfxLoadStreamNode* cur = *bucket;
+    struct SfxLoadStreamNode* prev = NULL;
+
+    while (cur != NULL) {
+        struct SfxLoadStreamNode* next =
+            (struct SfxLoadStreamNode*) (uintptr_t) cur->x0;
+        if (cur->x4 == sfx_id) {
+            if (prev == NULL) {
+                *bucket = next;
+            } else {
+                prev->x0 = cur->x0;
+            }
+            return;
+        }
+        prev = cur;
+        cur = next;
+    }
+#else
     void* cur;
     void** pcur = &hsd_SynthSFXDataHash[sfx_id & 0x1F];
 
@@ -426,6 +567,7 @@ void HSD_SynthSFXDataUnlink(int sfx_id)
         }
         pcur = (void**) cur;
     }
+#endif
 }
 
 void HSD_SynthSFXGroupDataRemove(int sfx_id)
@@ -435,6 +577,29 @@ void HSD_SynthSFXGroupDataRemove(int sfx_id)
     int i;
 
     for (i = 0; i < 0x20; i++) {
+#ifdef PORT
+        // PORT: the head slot is an eight-byte pointer and each node's link
+        // four, so the unlink keeps a `prev` rather than a pointer to the
+        // link.
+        AXVPB* prev = NULL;
+        cur = HSD_Synth_804C2AE0[i];
+        while (cur != NULL) {
+            AXVPB* next = BANK_NEXT(cur);
+            if (BANK_ENTRYNUM(cur) == sfx_id) {
+                HSD_SynthSFXGroupDataUnlink(cur);
+                if (prev == NULL) {
+                    HSD_Synth_804C2AE0[i] = next;
+                } else {
+                    BANK_NODE(prev)->x0 = BANK_NODE(cur)->x0;
+                }
+                HSD_AudioFree(cur);
+                return;
+            }
+            prev = cur;
+            cur = next;
+        }
+        (void) pcur;
+#else
         pcur = &HSD_Synth_804C2AE0[i];
         while (*pcur != NULL) {
             cur = *pcur;
@@ -447,6 +612,7 @@ void HSD_SynthSFXGroupDataRemove(int sfx_id)
             }
             pcur = &cur->next;
         }
+#endif
     }
 }
 
@@ -477,27 +643,59 @@ void HSD_SynthSFXGroupDataReaddress(AXVPB* arg0, void* callback)
 
     p = (u8*) arg0 + 0x18;
     sfxGroupDataReaddressCounter += 1;
+#ifdef PORT
+    HSD_DevComRequest(0, (uintptr_t) BANK_ARAM(arg0), (uintptr_t) callback,
+                      BANK_SIZE(arg0), 0x1B, 0,
+                      HSD_SynthSFXGroupDataReaddressCallback, 0);
+    i = 0;
+    delta = ((u8*) callback - (u8*) (uintptr_t) BANK_ARAM(arg0)) * 2;
+    while (i < BANK_COUNT(arg0)) {
+#else
     HSD_DevComRequest(0, (uintptr_t) arg0->callback, (uintptr_t) callback,
                       arg0->userContext, 0x1B, 0,
                       HSD_SynthSFXGroupDataReaddressCallback, 0);
     i = 0;
     delta = ((u8*) callback - (u8*) arg0->callback) * 2;
     while (i < arg0->priority) {
+#endif
         count = *(int*) (p + 8);
         q = p;
         for (j = 0; j < count; j++) {
+#ifdef PORT
+            // PORT: halfword pairs, as in HSD_SynthSFXSampleLoadCallback().
+            AXPBADDR* a = (AXPBADDR*) (q + 0x10);
+            u32 v;
+            if (a->loopFlag != 0) {
+                v = PORT_AX_U16PAIR_GET(a->loopAddressHi, a->loopAddressLo);
+                PORT_AX_U16PAIR_SET(a->loopAddressHi, a->loopAddressLo, v + delta);
+            }
+            v = PORT_AX_U16PAIR_GET(a->endAddressHi, a->endAddressLo);
+            PORT_AX_U16PAIR_SET(a->endAddressHi, a->endAddressLo, v + delta);
+            v = PORT_AX_U16PAIR_GET(a->currentAddressHi, a->currentAddressLo);
+            PORT_AX_U16PAIR_SET(a->currentAddressHi, a->currentAddressLo, v + delta);
+#else
             if (*(u16*) (q + 0x10) != 0) {
                 *(u32*) (q + 0x14) += delta;
             }
             *(u32*) (q + 0x18) += delta;
             *(u32*) (q + 0x1C) += delta;
+#endif
             q += 0x40;
         }
         p = (u8*) ((count << 6) + (uintptr_t) p);
         p += 0x10;
         i++;
     }
+#ifdef PORT
+    // PORT: the bank's new ARAM address goes into the node field the
+    // console's `callback` aliases. Written through the AXVPB, it would land
+    // at native +0x28, on the first voice entry's AXPBADDR (loop flag,
+    // format, loop address), and the node would keep the old address for the
+    // next deflag to copy from.
+    BANK_ARAM(arg0) = (s32) (uintptr_t) callback;
+#else
     arg0->callback = (void (*)(void*)) callback;
+#endif
 }
 
 void HSD_SynthSFXBankDeflag(int bank_id)
@@ -509,18 +707,43 @@ void HSD_SynthSFXBankDeflag(int bank_id)
     vpb = HSD_Synth_804C2AE0[bank_id];
     offset = hsd_SynthSFXBankHead[bank_id];
     while (vpb != NULL) {
+#ifdef PORT
+        if ((intptr_t) BANK_ARAM(vpb) != offset) {
+            HSD_SynthSFXGroupDataReaddress(vpb, (void*) offset);
+        }
+        offset += BANK_SIZE(vpb);
+        vpb = BANK_NEXT(vpb);
+#else
         if ((intptr_t) vpb->callback != offset) {
             HSD_SynthSFXGroupDataReaddress(vpb, (void*) offset);
         }
         offset += vpb->userContext;
         vpb = vpb->next;
+#endif
     }
+#ifdef PORT
+    // PORT: statics the console laid end to end. HSD_Synth_804C2AE0 is 32
+    // pointers, 0x80 bytes there, and hsd_SynthSFXBank begins at exactly
+    // +0x80, so index `bank_id + 32` reaches the second array. Here the first
+    // array is 0x100 bytes and the second is wherever the linker put it, so
+    // the array the console meant is named. See docs/design/verification.md,
+    // "Statics laid end to end".
+    hsd_SynthSFXBank[bank_id] = (int) offset;
+#else
     HSD_Synth_804C2AE0[bank_id + 0x80 / 4] = (void*) offset;
+#endif
 }
 
 void HSD_SynthSFXBankDeflagSync(void)
 {
     while (sfxGroupDataReaddressCounter) {
+#ifdef PORT
+        // PORT: on the console the ARQ interrupt runs the readdress callback
+        // while the CPU spins here. The port defers ARQ completions to a pump
+        // this loop does not otherwise reach, so it pumps, as lbArq_80014ABC()
+        // does.
+        port_arq_pump();
+#endif
         continue;
     }
 }
@@ -607,7 +830,13 @@ void dropcallback(void* dropped)
 }
 
 struct foo {
+#ifdef PORT
+    // PORT: the same node as SfxLoadStreamNode, read through the AX structs
+    // at the console's offsets, so its link is four bytes too.
+    u32 next;
+#else
     void* next;
+#endif
     int unk4; // sound ID
     int unk8; // voice count
     int unkC; // audio parameter
@@ -709,9 +938,18 @@ int HSD_Synth_80389334(int sfx_id, u8 vol, u8 vol2, u8 pan, int priority,
             while (voice_idx < sfx_entry->unk8) {
                 AXSetVoicePriority(voices[voice_idx], priority);
                 AXSetVoiceVe(voices[voice_idx], &ve);
+#ifdef PORT
+                // PORT: AXPBSRC.ratioHi/Lo is a 16.16 ratio the console
+                // writes as one big-endian word.
+                PORT_AX_U16PAIR_SET(
+                    HSD_Synth_80407FD8.ratioHi, HSD_Synth_80407FD8.ratioLo,
+                    (u32) (65536.0F *
+                           (sfx_node->x18[1] * (sfx_node->x14 * sfx_node->x18[0]))));
+#else
                 *(u32*) &HSD_Synth_80407FD8.ratioHi =
                     (65536.0F *
                      (sfx_node->x18[1] * (sfx_node->x14 * sfx_node->x18[0])));
+#endif
                 AXSetVoiceSrc(voices[voice_idx], &HSD_Synth_80407FD8);
                 AXSetVoiceAddr(voices[voice_idx], &SFX_VOICE(voice_idx)->x10);
                 AXSetVoiceAdpcm(voices[voice_idx], &SFX_VOICE(voice_idx)->x20);
@@ -728,7 +966,11 @@ int HSD_Synth_80389334(int sfx_id, u8 vol, u8 vol2, u8 pan, int priority,
             OSRestoreInterrupts(saved_interrupts);
             return sfx_node->x0;
         }
+#ifdef PORT
+        sfx_entry = (struct foo*) (uintptr_t) sfx_entry->next;
+#else
         sfx_entry = sfx_entry->next;
+#endif
     }
 
     OSRestoreInterrupts(saved_interrupts);
@@ -819,9 +1061,15 @@ static inline void stopRange(size_t lo, size_t hi)
     for (i = 0; i < 0x40; i++) {
         struct HSD_SynthSFXNode* node = &hsd_SynthSFXNodes[i];
         if (hsd_SynthSFXNodes[i].x0 > 0) {
+#ifdef PORT
+            addr = PORT_AX_U16PAIR_GET(
+                hsd_SynthSFXNodes[i].voice[0]->pb.addr.currentAddressHi,
+                hsd_SynthSFXNodes[i].voice[0]->pb.addr.currentAddressLo);
+#else
             addr = *(size_t*) &hsd_SynthSFXNodes[i]
                         .voice[0]
                         ->pb.addr.currentAddressHi;
+#endif
             if (addr >= lo && addr < hi) {
                 HSD_SynthSFXStopNode(&hsd_SynthSFXNodes[i]);
             }
@@ -1287,6 +1535,11 @@ void HSD_SynthResetStreamCounters(int result, uintptr_t args, void* buf,
 void HSD_SynthPStreamHakoHeaderCallback(int dcReq, uintptr_t src, void* buf,
                                         bool cancelflag)
 {
+#ifdef PORT
+    // PORT: a block header has been read into pstHakoHeader, and its words
+    // are used on the next line; swapped by port/data/audio_swap.c.
+    port_audio_hps_block_loaded(&pstHakoHeader[HSD_Synth_804D7768]);
+#endif
     HSD_DevComRequest(HSD_Synth_804D7764, src,
                       HSD_Synth_804D7780 + (HSD_Synth_804D7768 << 16),
                       pstHakoHeader[HSD_Synth_804D7768].x0, 0x23, 0,
@@ -1335,8 +1588,28 @@ void HSD_SynthPStreamMasterClockCallback(void)
     if (node->flags & 8) {
         return;
     }
+#ifdef PORT
+    // PORT: +0x1B2 into the AXVPB is pb.addr.currentAddressHi on the
+    // console; the AXVPB holds pointers, so here the field is named.
+    pos = (PORT_AX_U16PAIR_GET(node->voice[0]->pb.addr.currentAddressHi,
+                               node->voice[0]->pb.addr.currentAddressLo) -
+           HSD_Synth_804D7780 * 2) >>
+          0x11;
+#else
     pos = (*(u32*) ((u8*) node->voice[0] + 0x1B2) - HSD_Synth_804D7780 * 2) >>
           0x11;
+#endif
+#ifdef PORT
+    // PORT: once a stream's last block has played, the accelerator stops the
+    // voice and parks its current address at the loop address, the zero
+    // buffer at HSD_Synth_804D7784 below the stream buffers, so `pos` wraps
+    // to 32672. The console then reads .bss far past the three-entry ring and
+    // writes garbage into a stopped voice that nothing observes; here that
+    // address is unmapped, so the read is skipped.
+    if (pos >= 3) {
+        return;
+    }
+#endif
     if (pos != HSD_Synth_804D7774) {
         HSD_Synth_804D7774 = pos;
         for (i = 0; i < node->voice_count; i++) {
@@ -1396,6 +1669,16 @@ void HSD_SynthPStreamFirstHakoDataCallback(void)
         node->x24 = ve.currentVolume;
         for (i = 0; i < node->voice_count; i++) {
             AXSetVoiceVe(node->voice[i], &ve);
+#ifdef PORT
+            if (node->flags & 4) {
+                PORT_AX_U16PAIR_SET(HSD_Synth_80407FD8.ratioHi,
+                                    HSD_Synth_80407FD8.ratioLo, 0);
+            } else {
+                PORT_AX_U16PAIR_SET(
+                    HSD_Synth_80407FD8.ratioHi, HSD_Synth_80407FD8.ratioLo,
+                    (u32) (65536.0F * (node->x14 * node->x18[0] * node->x18[1])));
+            }
+#else
             if (node->flags & 4) {
                 *(u32*) &HSD_Synth_80407FD8.ratioHi = 0;
             } else {
@@ -1403,6 +1686,7 @@ void HSD_SynthPStreamFirstHakoDataCallback(void)
                     (u32) (65536.0F *
                            (node->x14 * node->x18[0] * node->x18[1]));
             }
+#endif
             AXSetVoiceSrc(node->voice[i], &HSD_Synth_80407FD8);
             AXSetVoiceCurrentAddr(
                 node->voice[i],
@@ -1437,6 +1721,9 @@ void HSD_SynthPStreamFirstHakoDataCallback(void)
 void HSD_SynthPStreamFirstHakoHeaderCallback(int dcReq, uintptr_t args,
                                              void* buf, bool cancelflag)
 {
+#ifdef PORT
+    port_audio_hps_block_loaded(&pstHakoHeader[HSD_Synth_804D7768]);
+#endif
     HSD_DevComRequest(
         HSD_Synth_804D7764, 0xA0,
         HSD_Synth_804D7780 + (HSD_Synth_804D7768 << 16),
@@ -1451,6 +1738,11 @@ void HSD_SynthPStreamHeaderCallback(int arg0, uintptr_t arg1, void* arg2,
     struct HSD_SynthSFXNode* node;
     int i;
 
+#ifdef PORT
+    // PORT: swaps the stream's 0x80-byte header, just read
+    // (port/data/audio_swap.c).
+    port_audio_hps_header_loaded(entry);
+#endif
     node = getNode(HSD_Synth_804D7760);
     if (node != NULL) {
         node->voice_count = entry[3];
@@ -1460,7 +1752,13 @@ void HSD_SynthPStreamHeaderCallback(int arg0, uintptr_t arg1, void* arg2,
         }
         node->x14 = 0.00003125f * (f32) entry[2];
         for (i = 0; i < node->voice_count; i++) {
+#ifdef PORT
+            PORT_AX_U16PAIR_SET(HSD_Synth_80407FD8.ratioHi,
+                                HSD_Synth_80407FD8.ratioLo,
+                                (u32) (65536.0f * node->x14));
+#else
             *(u32*) &HSD_Synth_80407FD8.ratioHi = (u32) (65536.0f * node->x14);
+#endif
             AXSetVoiceAddr(node->voice[i], (AXPBADDR*) &entry[i * 14 + 4]);
             AXSetVoiceAdpcm(node->voice[i], (AXPBADPCM*) &entry[i * 14 + 8]);
         }
@@ -1513,6 +1811,15 @@ int HSD_SynthPStreamStart(int entrynum, u8 vol, u8 vol2, int channel)
     PAD_STACK(8);
 
     do {
+#ifdef PORT
+        // PORT: set while the previous stream's header or block is still
+        // being read, and cleared on the console by the DVD and ARQ
+        // interrupts under this loop. The port defers both completions to
+        // pumps, so the loop pumps them, as HSD_SynthSFXBankDeflagSync()
+        // does.
+        port_dvd_pump();
+        port_arq_pump();
+#endif
     } while (HSD_Synth_804D7778 != 0);
 
     HSD_Synth_804D7778 = 1;

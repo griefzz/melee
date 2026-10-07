@@ -161,6 +161,168 @@ void psInitDataBankLoad(int bank, const int* cmdBank, const int* texBank,
     }
 }
 
+#if defined(PORT) || defined(LINT)
+void psInitDataBankLocate(int* cmdBank, int* texBank, int* formBank)
+{
+    // PORT: every word this relocates is a 32-bit slot inside a bank
+    // (HSD_PSSlot in psstructs.h). Walked as `s32` and cast back to a
+    // pointer, a bank at 0x82xxxxxx sign-extends, so the words are unsigned
+    // here. With PORT undefined, ps_word, PS_SLOT() and PS_BASE() are the
+    // #else arm's s32 and casts.
+    s32 num;
+    ps_word* ptr;
+    ps_word* group;
+    HSD_PSFormGroup* fg;
+    s32 j;
+    s32 i;
+    s32 num2;
+    ps_word* groups;
+    ps_word* base;
+    s32 version;
+
+    version = *(u16*) cmdBank;
+    switch (version) {
+    case 0:
+        num2 = ((ps_word*) cmdBank)[1];
+        base = (ps_word*) ((u8*) cmdBank + 8);
+        num = 0;
+        for (i = 0; i < num2; i++) {
+            ((ps_word*) cmdBank)[i + 2] += PS_BASE(cmdBank);
+        }
+        break;
+    case 0x40:
+    case 0x41:
+    case 0x42:
+    case 0x43:
+        num = ((ps_word*) cmdBank)[1];
+        num2 = ((ps_word*) cmdBank)[2] + num;
+        base = (ps_word*) cmdBank + 3 - num;
+        ptr = (ps_word*) cmdBank;
+        j = 0;
+        while (j < (s32) cmdBank[2]) {
+            if (ptr[3] != 0) {
+                ptr[3] += PS_BASE(cmdBank);
+            }
+            ptr++;
+            j++;
+        }
+        break;
+    }
+
+    /* Phase 2: Fix cmdList kind bits */
+    ptr = base + num;
+    for (i = num; i < num2; i++) {
+        s32* cmd = PS_SLOT(ptr[0]);
+        if (cmd != NULL) {
+            cmd[2] = cmd[2] & 0xF1FFFFFF;
+            cmd = PS_SLOT(ptr[0]);
+            cmd[2] = cmd[2] | 0x08000000;
+        }
+        ptr++;
+    }
+
+    /* Phase 3: texBank relocation */
+    {
+        s32 num_groups = ((ps_word*) texBank)[0];
+        s32 k;
+
+        group = groups = (ps_word*) texBank + 1;
+        for (k = 1; k <= num_groups; k++) {
+            if (group[0] != 0) {
+                group[0] += PS_BASE(texBank);
+            }
+            group++;
+        }
+
+        {
+            group = groups;
+            for (k = 0; k < num_groups; group++, k++) {
+                HSD_PSTexGroup* tg = (HSD_PSTexGroup*) PS_SLOT(group[0]);
+                if (tg == NULL) {
+                    continue;
+                }
+
+                /* Relocate texture pointers in the group */
+                {
+                    s32 ti;
+                    for (ti = 0; (u32) ti < ((HSD_PSTexGroup*) PS_SLOT(group[0]))->num;
+                         ti++)
+                    {
+                        if (((HSD_PSTexGroup*) PS_SLOT(group[0]))
+                                ->texTable[ti] != 0)
+                        {
+                            ((HSD_PSTexGroup*) PS_SLOT(group[0]))
+                                ->texTable[ti] += PS_BASE(texBank);
+                        }
+                    }
+                    tg = (HSD_PSTexGroup*) PS_SLOT(group[0]);
+                }
+
+                /* Check format for palette relocation */
+                {
+                    u32 fmt = tg->fmt;
+                    if (fmt != 8 && (fmt - 9) > 1) {
+                        continue;
+                    }
+                }
+
+                /* Palette relocation */
+                if (tg->palflag & 1) {
+                    /* Single palette pointer */
+                    i = tg->num;
+                    if (tg->texTable[i] != 0) {
+                        tg->texTable[i] += PS_BASE(texBank);
+                    }
+                } else if (tg->palnum != 0) {
+                    /* Multiple palette pointers (palnum > 0) */
+                    i = tg->num;
+                    for (; (u32) i < ((HSD_PSTexGroup*) PS_SLOT(group[0]))->num +
+                                         ((HSD_PSTexGroup*) PS_SLOT(group[0]))->palnum;
+                         i++)
+                    {
+                        HSD_PSTexGroup* tg2 = (HSD_PSTexGroup*) PS_SLOT(group[0]);
+                        HSD_PSSlot* entry = &tg2->texTable[i];
+                        if (*entry != 0) {
+                            *entry += PS_BASE(texBank);
+                        }
+                    }
+                } else {
+                    /* palnum == 0: relocate double the num entries */
+                    i = tg->num;
+                    for (; (u32) i < ((HSD_PSTexGroup*) PS_SLOT(group[0]))->num * 2;
+                         i++)
+                    {
+                        HSD_PSTexGroup* tg2 = (HSD_PSTexGroup*) PS_SLOT(group[0]);
+                        HSD_PSSlot* entry = &tg2->texTable[i];
+                        if (*entry != 0) {
+                            *entry += PS_BASE(texBank);
+                        }
+                    }
+                }
+            }
+        }
+
+        /* Phase 4: formBank relocation */
+        if (formBank == NULL) {
+            return;
+        }
+        {
+            for (i = 1; i <= num_groups; i++) {
+                if (formBank[i] != 0) {
+                    s32 fi;
+                    ((ps_word*) formBank)[i] += PS_BASE(formBank);
+                    fg = PS_SLOT(((ps_word*) formBank)[i]);
+                    for (fi = 0; (u32) fi < fg->num; fi++) {
+                        if (fg->formTable[fi] != 0) {
+                            fg->formTable[fi] += PS_BASE(formBank);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+#else
 void psInitDataBankLocate(int* cmdBank, int* texBank, int* formBank)
 {
     s32 num;
@@ -315,6 +477,7 @@ void psInitDataBankLocate(int* cmdBank, int* texBank, int* formBank)
         }
     }
 }
+#endif
 
 void psInitDataBank(int bank, int* cmdBank, int* texBank, u32* ref,
                     int* formBank)
@@ -608,9 +771,10 @@ s32 hsd_803991D8(HSD_Generator* gen, HSD_JObj* jobj, f32 force, f32 range)
     return 0;
 }
 
-static inline void psEnableTexture(HSD_Particle* pp, u8* const* textures)
+static inline void psEnableTexture(HSD_Particle* pp,
+                                   const HSD_PSSlot* textures)
 {
-    if (textures != NULL && textures[pp->poseNum] != NULL) {
+    if (textures != NULL && PS_SLOT(textures[pp->poseNum]) != NULL) {
         pp->kind |= DispTexture;
     }
 }
@@ -618,10 +782,21 @@ static inline void psEnableTexture(HSD_Particle* pp, u8* const* textures)
 static inline void psReadFloat(u8** stream)
 {
     u8* p = *stream;
+#ifdef PORT
+    // PORT: the particle bytecode stays in the console's byte order, so a
+    // float's bytes arrive most significant first, and a little-endian host
+    // fills the union from the other end. Every other multi-byte operand in
+    // this interpreter is assembled with shifts.
+    ((ParticleFloatBytes*) &hsd_804D78D0)->bytes[3] = *p++;
+    ((ParticleFloatBytes*) &hsd_804D78D0)->bytes[2] = *p++;
+    ((ParticleFloatBytes*) &hsd_804D78D0)->bytes[1] = *p++;
+    ((ParticleFloatBytes*) &hsd_804D78D0)->bytes[0] = *p++;
+#else
     ((ParticleFloatBytes*) &hsd_804D78D0)->bytes[0] = *p++;
     ((ParticleFloatBytes*) &hsd_804D78D0)->bytes[1] = *p++;
     ((ParticleFloatBytes*) &hsd_804D78D0)->bytes[2] = *p++;
     ((ParticleFloatBytes*) &hsd_804D78D0)->bytes[3] = *p++;
+#endif
     *stream = p;
 }
 
@@ -639,11 +814,11 @@ static inline HSD_Particle* psSpawnChild(HSD_Particle** head, int linkNo,
     } else if (idx >= psCmdListArray[bank]) {
         child = NULL;
     } else {
-        cl = ptclref_804D0E5C[bank][idx];
+        cl = PS_CMDLIST(bank, idx);
         if (cl == NULL) {
             child = NULL;
         } else {
-            tg = psTexGroupArray[bank][cl->texGroup];
+            tg = PS_TEXGROUP(bank, cl->texGroup);
             if (tg != NULL) {
                 palflag = tg->palflag;
             } else {
@@ -781,8 +956,13 @@ void* hsd_8039930C(HSD_Particle* pp, HSD_Particle* prev)
                         u8 bank = pp->bank;
                         u8 tgIdx = pp->texGroup;
 
+#if defined(PORT) || defined(LINT)
+                        (void) tga;
+                        texGrp = PS_TEXGROUP(bank, tgIdx);
+#else
                         tga = psTexGroupArray[bank];
                         texGrp = tga[tgIdx];
+#endif
                         if (texGrp != NULL) {
                             psEnableTexture(pp, texGrp->texTable);
                         }
@@ -1007,11 +1187,19 @@ void* hsd_8039930C(HSD_Particle* pp, HSD_Particle* prev)
                         } else if (idx >= psCmdListArray[bank]) {
                             child = NULL;
                         } else {
+#if defined(PORT) || defined(LINT)
+                            cl = PS_CMDLIST(bank, idx);
+#else
                             cl = ptclref_804D0E5C[bank][idx];
+#endif
                             if (cl == NULL) {
                                 child = NULL;
                             } else {
+#if defined(PORT) || defined(LINT)
+                                tg = PS_TEXGROUP(bank, cl->texGroup);
+#else
                                 tg = psTexGroupArray[bank][cl->texGroup];
+#endif
                                 if (tg != NULL) {
                                     palflag = tg->palflag;
                                 } else {
@@ -1330,11 +1518,19 @@ void* hsd_8039930C(HSD_Particle* pp, HSD_Particle* prev)
                         } else if (idx >= psCmdListArray[bank]) {
                             child = NULL;
                         } else {
+#if defined(PORT) || defined(LINT)
+                            cl = PS_CMDLIST(bank, idx);
+#else
                             cl = ptclref_804D0E5C[bank][idx];
+#endif
                             if (cl == NULL) {
                                 child = NULL;
                             } else {
+#if defined(PORT) || defined(LINT)
+                                tg = PS_TEXGROUP(bank, cl->texGroup);
+#else
                                 tg = psTexGroupArray[bank][cl->texGroup];
+#endif
                                 if (tg != NULL) {
                                     palflag = tg->palflag;
                                 } else {
@@ -1655,11 +1851,19 @@ void* hsd_8039930C(HSD_Particle* pp, HSD_Particle* prev)
                         } else if (idx >= psCmdListArray[bank]) {
                             child = NULL;
                         } else {
+#if defined(PORT) || defined(LINT)
+                            cl = PS_CMDLIST(bank, idx);
+#else
                             cl = ptclref_804D0E5C[bank][idx];
+#endif
                             if (cl == NULL) {
                                 child = NULL;
                             } else {
+#if defined(PORT) || defined(LINT)
+                                tg = PS_TEXGROUP(bank, cl->texGroup);
+#else
                                 tg = psTexGroupArray[bank][cl->texGroup];
+#endif
                                 if (tg != NULL) {
                                     palflag = tg->palflag;
                                 } else {
@@ -1721,11 +1925,19 @@ void* hsd_8039930C(HSD_Particle* pp, HSD_Particle* prev)
                         } else if (idx >= psCmdListArray[bank]) {
                             child = NULL;
                         } else {
+#if defined(PORT) || defined(LINT)
+                            cl = PS_CMDLIST(bank, idx);
+#else
                             cl = ptclref_804D0E5C[bank][idx];
+#endif
                             if (cl == NULL) {
                                 child = NULL;
                             } else {
+#if defined(PORT) || defined(LINT)
+                                tg = PS_TEXGROUP(bank, cl->texGroup);
+#else
                                 tg = psTexGroupArray[bank][cl->texGroup];
+#endif
                                 if (tg != NULL) {
                                     palflag = tg->palflag;
                                 } else {
@@ -1954,8 +2166,13 @@ void* hsd_8039930C(HSD_Particle* pp, HSD_Particle* prev)
                             HSD_PSTexGroup** tga;
                             HSD_PSTexGroup* texGrp;
 
+#if defined(PORT) || defined(LINT)
+                            (void) tga;
+                            texGrp = PS_TEXGROUP(bank, tgIdx);
+#else
                             tga = psTexGroupArray[bank];
                             texGrp = tga[tgIdx];
+#endif
                             if (texGrp != NULL) {
                                 psEnableTexture(pp, texGrp->texTable);
                             }
@@ -3021,7 +3238,23 @@ typedef struct {
 
 void hsd_8039D0A0(HSD_Generator* gen)
 {
+#ifdef PORT
+    // PORT: ParticleData is four of this file's statics walked as one
+    // object: psPointJObj (0x20 bytes), then hsd_804D0908, the bank tables
+    // and hsd_804D0F60 at +0x20, +0x268 and +0x678, laid end to end by the
+    // console's linker. On the host they are four objects, so each is named.
+    // particle[146] does not matter: hsd_8039F05C() (generator.c) keeps
+    // linkNo below 8, and hsd_804D0908 holds 16. See
+    // docs/design/verification.md, "Statics laid end to end".
+#define ptcl_particle(i) (hsd_804D0908[i])
+#define ptcl_jobj(i) (psPointJObj[i])
+#define ptcl_alloc_data() (&hsd_804D0F60.alloc_data)
+#else
     ParticleData* data = (ParticleData*) psPointJObj;
+#define ptcl_particle(i) (data->particle[i])
+#define ptcl_jobj(i) (data->jobj[i])
+#define ptcl_alloc_data() (&data->alloc_data)
+#endif
     HSD_Particle* prev;
     HSD_Particle* prt;
     HSD_Particle* next;
@@ -3030,7 +3263,7 @@ void hsd_8039D0A0(HSD_Generator* gen)
 
     prev = NULL;
     idnum = gen->idnum;
-    head = &data->particle[gen->linkNo];
+    head = &ptcl_particle(gen->linkNo);
     prt = *head;
 
     while (prt != NULL) {
@@ -3058,13 +3291,13 @@ void hsd_8039D0A0(HSD_Generator* gen)
 
             if (prt->kind & 0x8000) {
                 s32 jidx = (prt->kind >> 12) & 7;
-                if (data->jobj[jidx] != NULL) {
-                    HSD_JObjUnref(data->jobj[jidx]);
-                    data->jobj[jidx] = NULL;
+                if (ptcl_jobj(jidx) != NULL) {
+                    HSD_JObjUnref(ptcl_jobj(jidx));
+                    ptcl_jobj(jidx) = NULL;
                 }
             }
 
-            HSD_ObjFree(&data->alloc_data, prt);
+            HSD_ObjFree(ptcl_alloc_data(), prt);
             hsd_804D78E2--;
         } else {
             prev = prt;

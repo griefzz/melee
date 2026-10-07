@@ -113,6 +113,16 @@ void* HSD_ObjAlloc(HSD_ObjAllocData* data)
     if (data->used > data->peak) {
         data->peak = data->used;
     }
+#ifdef PORT
+    // PORT: handed back cleared. Several callers read a field of the cell
+    // before their init path writes it (the decomp notes one in
+    // Fighter_Create(), ft/fighter.c), and on the console they get whatever
+    // the last owner left. Here the port's heap layout would decide the
+    // game's behaviour: lbBgFlash_Init() (lb/lb_0219.c) starts a colour
+    // script from an index it has not written yet. Zero is what the init
+    // paths write a moment later, and the reads are the same every run.
+    memset(cur, 0, data->size);
+#endif
     return cur;
 }
 
@@ -140,6 +150,18 @@ static inline void removeAll(HSD_ObjAllocData* data)
 void HSD_ObjAllocInit(HSD_ObjAllocData* data, size_t size, u32 align)
 {
     HSD_ASSERT(0x185, data);
+#ifdef PORT
+    // PORT: some call sites pass a size in the console's bytes, a struct's
+    // size written as a hex literal, and a struct holding a pointer is larger
+    // here. An oversized cell costs only memory; an undersized one is a write
+    // past the end of the cell into the next. Doubling covers the worst case,
+    // a struct of nothing but pointers. Several sites ask for four-byte
+    // alignment, which an eight-byte pointer store needs raised to eight.
+    if (align < 8) {
+        align = 8;
+    }
+    size *= 2;
+#endif
     if (data != NULL) {
         removeAll(data);
     } else {

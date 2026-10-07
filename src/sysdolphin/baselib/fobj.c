@@ -370,7 +370,14 @@ void FObjUpdateAnim(HSD_FObj* fobj, void* obj, HSD_ObjUpdateFunc obj_update)
                 fobj->p0 = fobj->p1;
             }
         }
+#ifdef PORT
+        // PORT: one fmadds on the console (FObjUpdateAnim+0x128); rounded
+        // twice, a linear-keyed joint moves by an ULP. splGetHelmite()
+        // (spline.c) is the same for spline keys.
+        fobjdata.fv = __builtin_fmaf(fobj->d0, fobj->time, fobj->p0);
+#else
         fobjdata.fv = fobj->d0 * fobj->time + fobj->p0;
+#endif
         break;
     case HSD_A_OP_SPL0:
     case HSD_A_OP_SPL:

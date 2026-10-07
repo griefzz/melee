@@ -4,9 +4,19 @@
 #include <Runtime/platform.h>
 
 #include <setjmp.h>
+#ifdef PORT
+#include <port/jmpbuf.h>
+#endif
 
 typedef struct JpegWork {
     jmp_buf buf;
+#ifdef PORT
+    // PORT: the console's jmp_buf is 0x118 bytes, and the encoder reaches
+    // the fields below by name and at raw offsets (jpegLumaAddress() and
+    // hsd_803B51C8_inline() in hsd_3B34.c). The host's is PORT_JMP_BUF_SIZE,
+    // so it is padded out to 0x118 and the two agree.
+    u8 buf_pad[0x118 - PORT_JMP_BUF_SIZE];
+#endif
     s32 x118[0x100];
     s32 x518[0x40];
     s32 x618[0x40];
@@ -19,7 +29,11 @@ typedef struct JpegWork {
 /* 3B46D4 */ void hsd_803B46D4(void);
 /* 3B4A2C */ void hsd_803B4A2C(void);
 /* 3B4D64 */ void hsd_803B4D64(u32, u32);
+#ifdef PORT
+/* 3B51C8 */ s32 hsd_803B51C8(intptr_t, s32, s32, char*, s32);
+#else
 /* 3B51C8 */ s32 hsd_803B51C8(s32, s32, s32, char*, s32);
+#endif
 /* 3B5C2C */ void hsd_803B5C2C(s32);
 /* 3B5C4C */ s32 hsd_803B5C4C(s32);
 /* 3B5D70 */ s32 hsd_803B5D70(s32, s32);

@@ -2,8 +2,10 @@
 
 #include "hsd_3B34.h"
 
+#ifndef PORT
 jmp_buf hsd_804D2E70;
 u8 hsd_804D2F68[0x70C];
+#endif
 
 typedef struct JpegWorkData {
     s32 luma[0x100];
@@ -15,8 +17,29 @@ typedef struct JpegWorkData {
 
 typedef struct JpegState {
     jmp_buf jmp;
+#ifdef PORT
+    // PORT: as in JpegWork (hsd_3B34.h): the console's jmp_buf is 0x118
+    // bytes, and the decoder reaches the work area at base + 0x118 as well as
+    // by name.
+    u8 jmp_pad[0x118 - PORT_JMP_BUF_SIZE];
+#endif
     JpegWorkData work;
 } JpegState;
+
+#ifdef PORT
+// PORT: on the console the jmp_buf (0x804D2E70, 0x118 bytes) and the work
+// area after it (0x804D2F88) are two statics laid end to end, read as one
+// JpegState from the first one's address. On the host two statics land
+// wherever the compiler puts them, so they are one object here.
+static JpegState hsd_804D2E70_state;
+#define hsd_804D2E70 (hsd_804D2E70_state.jmp)
+
+// PORT: the JPEG stream is big-endian bytes, as the encoder writes it.
+#define JPEG_BE16(p)                                                           \
+    ((u16) ((((const u8*) (p))[0] << 8) | ((const u8*) (p))[1]))
+#else
+#define JPEG_BE16(p) (*(u16*) (p))
+#endif
 
 typedef struct JpegQuantTables {
     u8 luma[0x40];
@@ -244,7 +267,20 @@ s32 hsd_803B5D70(s32 ac, s32 component)
         code = (code * 2) | hsd_803B5C4C(1);
         code_table_tmp = code_cursor;
         while (bit_len == (s32) *length_table) {
+#ifdef PORT
+            // PORT: the AC code tables are u16 views into lbl_80431090, a
+            // byte table the console reads as big-endian halfwords; the DC
+            // tables (lbl_80431678, lbl_8043169C) are real u16 arrays. The AC
+            // halfword is composed from its two bytes and the DC one read as
+            // it is, as the encoder's hsd_803B3CD8() (hsd_3B34.c) does.
+            if (code ==
+                (s32) (ac != 0
+                           ? (u16) ((((const u8*) code_table_tmp)[0] << 8) |
+                                    ((const u8*) code_table_tmp)[1])
+                           : *code_table_tmp)) {
+#else
             if (code == (s32) *code_table_tmp) {
+#endif
                 return value_table[value_idx];
             }
             code_table_tmp += 1;
@@ -489,8 +525,21 @@ static inline void jpeg_store_rgb565(JpegOutput* out, s32 offset,
                         (0.0012 * (f64) cr));
     pixel.blue = jpeg_clamp(blue_value);
 
+#ifdef PORT
+    // PORT: a GX_TF_RGB565 texel, stored big-endian as the texture unit
+    // reads it; the port's texture decoder (texture.c) reads it that way.
+    {
+        u16 v = ((pixel.red << 8) & 0xF800) | ((pixel.green << 3) & 0x7E0) |
+                (pixel.blue >> 3U);
+        u8* b = (u8*) &out->pixels[offset];
+
+        b[0] = (u8) (v >> 8);
+        b[1] = (u8) v;
+    }
+#else
     out->pixels[offset] = ((pixel.red << 8) & 0xF800) |
                           ((pixel.green << 3) & 0x7E0) | (pixel.blue >> 3U);
+#endif
 }
 
 static void fn_803B6820(u8* dst, s32 x, s32 y, s32 width, s32 unused_height)
@@ -633,7 +682,7 @@ static inline s32 hsd_803B6BE4_inline(char* src, s32 size, void* dst)
     }
     src_byte0 = &hsd_804D79BC[hsd_804D79C0];
     for (;;) {
-        if (*(u16*) hsd_804D79B8 == 0xFFDB) {
+        if (JPEG_BE16(hsd_804D79B8) == 0xFFDB) {
             u8* zigzag;
             s32 i;
 
@@ -656,7 +705,7 @@ static inline s32 hsd_803B6BE4_inline(char* src, s32 size, void* dst)
     }
     src_byte0 = &hsd_804D79BC[hsd_804D79C0];
     for (;;) {
-        if (*(u16*) hsd_804D79B8 == 0xFFDB) {
+        if (JPEG_BE16(hsd_804D79B8) == 0xFFDB) {
             u8 qbyte;
             u8* qptr;
             s32 zigzag_index;
@@ -717,11 +766,11 @@ static inline s32 hsd_803B6BE4_inline(char* src, s32 size, void* dst)
     }
     src_byte0 = &hsd_804D79BC[hsd_804D79C0];
     for (;;) {
-        if (*(u16*) hsd_804D79B8 == 0xFFC0) {
+        if (JPEG_BE16(hsd_804D79B8) == 0xFFC0) {
             hsd_804D79B8 += 5;
-            state.height = *(u16*) hsd_804D79B8;
+            state.height = JPEG_BE16(hsd_804D79B8);
             hsd_804D79B8 += 2;
-            state.width = *(u16*) hsd_804D79B8;
+            state.width = JPEG_BE16(hsd_804D79B8);
             hsd_804D79B8 += 0xC;
             break;
         }
@@ -733,7 +782,7 @@ static inline s32 hsd_803B6BE4_inline(char* src, s32 size, void* dst)
     }
     src_byte0 = &hsd_804D79BC[hsd_804D79C0];
     for (;;) {
-        if (*(u16*) hsd_804D79B8 == 0xFFDA) {
+        if (JPEG_BE16(hsd_804D79B8) == 0xFFDA) {
             hsd_804D79B8 += 2;
             hsd_804D79B8 += 0xC;
             break;

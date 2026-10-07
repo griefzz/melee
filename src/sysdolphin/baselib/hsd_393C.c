@@ -275,7 +275,9 @@ s32 hsd_803941E8(void* xfb_out_ptr, void* xfb_cur_ptr)
     s32* xfb_out = xfb_out_ptr;
     u32* xfb_cur = xfb_cur_ptr;
     s32 last_draw;
+#ifndef PORT
     u8* vi_base;
+#endif
     s32 nb_xfb;
     s32 i;
     u32 buf;
@@ -285,9 +287,44 @@ s32 hsd_803941E8(void* xfb_out_ptr, void* xfb_cur_ptr)
     last_draw = HSD_VIGetXFBLastDrawDone();
 
     if (last_draw != -1) {
+#ifdef PORT
+        *xfb_cur = (u32) (uintptr_t) HSD_VIData.xfb[last_draw].buffer;
+#else
         *xfb_cur = (u32) HSD_VIData.xfb[last_draw].buffer;
+#endif
     }
 
+#ifdef PORT
+    // PORT: the console's byte walk reads xfb[i].buffer at +0x58 with a
+    // stride of 0x60. Here an XFB begins with an eight-byte pointer and
+    // neither number holds, so the buffers are read by field. They are in
+    // MEM1, below 4 GB, so the u32 stores keep them. The only caller is the
+    // debug console thread, fn_80397814() (debugconsole_main.c), which the
+    // port does not start: OSCreateThread() is unimplemented.
+    nb_xfb = HSD_VIData.nb_xfb;
+    for (i = 0; i < nb_xfb; i++) {
+        if (i == last_draw) {
+            continue;
+        }
+        buf = (u32) (uintptr_t) HSD_VIData.xfb[i].buffer;
+        xfb_out[0] = buf;
+        if (buf != 0) {
+            break;
+        }
+    }
+
+    i++;
+    for (; i < nb_xfb; i++) {
+        if (i == last_draw) {
+            continue;
+        }
+        buf = (u32) (uintptr_t) HSD_VIData.xfb[i].buffer;
+        xfb_out[1] = buf;
+        if (buf != 0) {
+            break;
+        }
+    }
+#else
     vi_base = (u8*) &HSD_VIData;
     nb_xfb = HSD_VIData.nb_xfb;
     for (i = 0; i < nb_xfb; vi_base += 0x60, i++) {
@@ -313,6 +350,7 @@ s32 hsd_803941E8(void* xfb_out_ptr, void* xfb_cur_ptr)
             break;
         }
     }
+#endif
 
     if ((u32) xfb_out[0] == 0) {
         if (xfb_cur != NULL) {
