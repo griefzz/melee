@@ -23,7 +23,18 @@ typedef struct {
     u8 b7 : 1, b6 : 1, b5 : 1, b4 : 1, b3 : 1, b2 : 1, b1 : 1, b0 : 1;
 } u8_bits;
 
+#ifdef PORT
+// PORT: read as a whole UnkAllstarData (0xA0 bytes on the console) through
+// gm_GetAllStarData() and fn_8017EE40(), over a 0x78-byte array. On the
+// console the last 0x28 bytes are the start of gmregclear.c's lbl_80472D28,
+// which the clear screen uses only once All-Star is over. Here the struct
+// holds eleven function pointers and is larger still, and the writes past
+// 0x78 land in whatever the linker put next. Sized and aligned as what it
+// holds.
+static u8 lbl_80472CB0[sizeof(struct UnkAllstarData)] ATTRIBUTE_ALIGN(8);
+#else
 static u8 lbl_80472CB0[0x78];
+#endif
 
 AllstarStageEntry lbl_803D85F0[55] = {
     { 4, 0, 0x3c, 0xaf, { 0, 0, 9 } },
@@ -158,9 +169,15 @@ bool fn_8017EDDC(void)
     return false;
 }
 
+#if defined(PORT) || defined(LINT)
+void fn_8017EE40(MatchEnd* arg0)
+#else
 void fn_8017EE40(int arg0_int)
+#endif
 {
+#ifndef PORT
     MatchEnd* arg0 = (MatchEnd*) arg0_int;
+#endif
     struct StartMeleeRules* rules;
     UnkAllstarData* allstar;
     gmm_x0_528_t* main_data;

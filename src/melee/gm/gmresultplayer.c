@@ -24,6 +24,9 @@
 #include <sysdolphin/baselib/mobj.h>
 #include <sysdolphin/baselib/tobj.h>
 #include <sysdolphin/baselib/wobj.h>
+#ifdef PORT
+#include <port/gfx.h>
+#endif
 
 extern ResultsData lbl_8046DBE8;
 
@@ -912,6 +915,26 @@ void fn_80178050(HSD_GObj* arg0)
     }
 }
 
+#ifdef PORT
+// PORT: the results panel has a row-label set per match kind (joints 0xC,
+// 0x10, 0x11 and 0x15). fn_801785B0() plays the one this match uses and
+// stops the other three at frame 0 of their slide-in, which parks them at
+// console x -244..-23, left of the console's frame. A widened view shows
+// that strip, so there they are hidden, as the console never shows them.
+// Render only: nothing but the draw reads the flag. Slippi's 16:9 shows
+// them.
+static void fn_801785B0_park(HSD_JObj* set)
+{
+    HSD_JObjRemoveAnimAll(set);
+    if (port_gfx_view_widen() > 1.0f) {
+        HSD_JObjSetFlagsAll(set, JOBJ_HIDDEN);
+    }
+}
+#define RESULT_LABELS_PARK(set) fn_801785B0_park(set)
+#else
+#define RESULT_LABELS_PARK(set) HSD_JObjRemoveAnimAll(set)
+#endif
+
 void fn_801785B0(HSD_GObj* gobj)
 {
     HSD_JObj* jobj = gobj->hsd_obj;
@@ -926,11 +949,11 @@ void fn_801785B0(HSD_GObj* gobj)
 
     if (mode == 2) {
         lb_80011E24(jobj, &child, 0x15, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0x11, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0x10, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0xC, -1);
         node = child;
         {
@@ -951,11 +974,11 @@ void fn_801785B0(HSD_GObj* gobj)
         return;
     } else if (mode == 1) {
         lb_80011E24(jobj, &child, 0x15, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0xC, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0x10, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0x11, -1);
         node = child;
         {
@@ -976,11 +999,11 @@ void fn_801785B0(HSD_GObj* gobj)
         return;
     } else if (mode == 3) {
         lb_80011E24(jobj, &child, 0x11, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0xC, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0x15, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0x10, -1);
         node = child;
         {
@@ -1001,11 +1024,11 @@ void fn_801785B0(HSD_GObj* gobj)
         return;
     } else {
         lb_80011E24(jobj, &child, 0x11, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0xC, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0x10, -1);
-        HSD_JObjRemoveAnimAll(child);
+        RESULT_LABELS_PARK(child);
         lb_80011E24(jobj, &child, 0x15, -1);
         node = child;
         {

@@ -39,10 +39,15 @@
 
 extern ResultsData lbl_8046DBE8;
 
+#ifdef PORT
+// PORT: the four statics below as one object (gm_1798.h).
+ResultsDisplayLayout port_results_display;
+#else
 ResultsDisplayData lbl_8046E1B0;
 HSD_GObj* lbl_8046E38C[4];
 HSD_JObj* lbl_8046E39C[4];
 lbl_8046E3AC_t lbl_8046E3AC;
+#endif
 
 static U32Pair lbl_804D3FD0 ATTRIBUTE_ALIGN(8) = { 0x00500050, 0x00460034 };
 static U32Pair lbl_804D3FD8 = { 0x006E0072, 0x0064004A };
@@ -367,7 +372,22 @@ HSD_GObj* fn_8017A318(s32 arg0)
 {
     static Scissor const scissor_init = { 270, 370, 124, 276 };
     u32* config = (u32*) &lbl_803B7B68;
+#ifdef PORT
+    // PORT: CameraKindData is the console's run of statics after
+    // gmResultPlayerColors: `kind` at +0x10 is gmResultCharacterScaleData
+    // (0x803D6A18) and `slot_off` at +0x6D0 is gmResultCharacterData.slot_off
+    // (0x803D7058 + 0x80). The host's layout of those statics is not the
+    // console's, so they are named, through a struct whose two pointer
+    // members keep the reads below as written.
+    struct PortResultTables {
+        CameraKindParams* kind;
+        f32 (*slot_off)[3][4];
+    } port_data = { (CameraKindParams*) gmResultCharacterScaleData,
+                    gmResultCharacterData.slot_off };
+    struct PortResultTables* data = &port_data;
+#else
     CameraKindData* data = (CameraKindData*) gmResultPlayerColors;
+#endif
     ResultsDisplayLayout* disp = (ResultsDisplayLayout*) &lbl_8046E1B0;
     MatchEnd* match_end = &disp->state.match_end;
     s32 _pad[2];
@@ -400,7 +420,18 @@ HSD_GObj* fn_8017A318(s32 arg0)
     }
 
     gobj = GObj_Create(0x13, 0x14, 0);
+#ifdef PORT
+    // PORT: `cobj_desc` at +0xF08 of the overlay is gmResultCameraDesc
+    // (0x803D6A08 + 0xF08 == 0x803D7910). Here the run of statics breaks
+    // before it: gmResultCameraEyeDesc is an HSD_WObjDesc, 0x14 bytes on the
+    // console and 0x20 here, and gmResultCameraInterestDesc is all zeroes and
+    // lands in .bss. Read through the overlay, CObjLoad() (cobj.c) takes the
+    // viewport's last s16 as projection_type and asserts. The desc is named,
+    // as fn_8017A078() already names it.
+    cobj = HSD_CObjLoadDesc((HSD_CObjDesc*) &gmResultCameraDesc);
+#else
     cobj = HSD_CObjLoadDesc(&data->cobj_desc);
+#endif
     HSD_GObjObject_80390A70(gobj, HSD_GObj_CameraKind, cobj);
 
     {
@@ -462,6 +493,13 @@ HSD_GObj* fn_8017A318(s32 arg0)
     if (slot == 0) {
         fn_8017A078(arg0);
     }
+#ifdef PORT
+    // PORT: the decomp has no `return`; the console returns whatever r3
+    // holds (this gobj, or the one fn_8017A078() built). The only caller
+    // stores it in ResultsPlayerData::camera and nothing reads it back, but
+    // falling off the end is `unreachable` to clang, which may drop the tail.
+    return gobj;
+#endif
 }
 
 Fighter_GObj* fn_8017A67C(CharacterKind kind, int arg1, int arg2)

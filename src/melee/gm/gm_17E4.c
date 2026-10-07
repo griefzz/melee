@@ -311,9 +311,15 @@ typedef struct {
     u8 b7 : 1, b6 : 1, b5 : 1, b4 : 1, b3 : 1, b2 : 1, b1 : 1, b0 : 1;
 } u8_bits;
 
+#if defined(PORT) || defined(LINT)
+void fn_8017E8A4(MatchEnd* arg0)
+#else
 void fn_8017E8A4(int arg0_int)
+#endif
 {
+#ifndef PORT
     MatchEnd* arg0 = (MatchEnd*) arg0_int;
+#endif
     VsSceneController* gm = gmVs_GetSceneController();
     struct gm_803DE650_t* stage = getCurrentStage();
     UnkAdventureData* adv = &lbl_80472C30;

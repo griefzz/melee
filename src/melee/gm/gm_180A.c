@@ -35,8 +35,32 @@ struct lbl_80472E48_t {
 }; /* size = 0x80 */
 ASSERT_SIZE(struct lbl_80472E48_t, 0x80);
 
+#ifdef PORT
+// PORT: the console's linker laid lbl_80472EC8 (0x10 bytes) directly after
+// lbl_80472E48 (0x80 bytes), and fn_80180C60(), fn_80181598() and
+// fn_80181708() cast `&lbl_80472E48` to a struct that is both. Here they are
+// two objects: those writes run sixteen bytes past lbl_80472E48 into another
+// static, and gm_80180AE4(), which reads lbl_80472EC8 by name (the Home-Run
+// distance), reads a word nothing writes. This makes them one object again,
+// and the macros keep every use spelled as the decomp wrote it. The offset
+// is checked with _Static_assert because STATIC_ASSERT, and so ASSERT_SIZE,
+// is empty under PORT (Runtime/platform.h). See docs/design/verification.md,
+// "Statics laid end to end".
+typedef struct lbl_80472E48_storage_t {
+    struct lbl_80472E48_t e48;
+    s32 ec8[4];
+} lbl_80472E48_storage_t;
+
+static lbl_80472E48_storage_t lbl_80472E48_storage;
+_Static_assert(offsetof(lbl_80472E48_storage_t, ec8) == 0x80,
+               "lbl_80472EC8 must begin where lbl_80472E48 ends");
+
+#define lbl_80472E48 (lbl_80472E48_storage.e48)
+#define lbl_80472EC8 (lbl_80472E48_storage.ec8)
+#else
 static struct lbl_80472E48_t lbl_80472E48;
 static s32 lbl_80472EC8[4];
+#endif
 
 static HSD_Archive* lbl_804D65C8;
 static DynamicModelDesc** lbl_804D65CC;

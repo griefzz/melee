@@ -143,9 +143,15 @@ f32 gm_8018A314(u8 difficulty, u8 stage_slot)
            100.0F;
 }
 
+#if defined(PORT) || defined(LINT)
+void fn_8018A364(MatchEnd* arg0)
+#else
 void fn_8018A364(int arg0_int)
+#endif
 {
+#ifndef PORT
     MatchEnd* arg0 = (MatchEnd*) arg0_int;
+#endif
     struct StartMeleeRules* rules;
     gmm_x0_528_t* main_data;
     UnkAllstarData* data;

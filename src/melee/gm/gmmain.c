@@ -2,6 +2,9 @@
 #include <Runtime/platform.h>
 
 #include <sysdolphin/baselib/forward.h>
+#ifdef PORT
+#include <port/boot.h>
+#endif
 
 #include "gm_unsplit.h"
 #include "gmmain_lib.h"
@@ -152,6 +155,12 @@ int main(void)
     HSD_AllocateXFB(2, &GXNtsc480IntDf);
     HSD_GXSetFifoObj(GXInit(HSD_AllocateFifo(0x40000), 0x40000));
     HSD_InitComponent();
+#ifdef PORT
+    // PORT: names a point the boot sequence reaches, so a run can be stopped
+    // at a known state instead of wherever it happens to fail. Does nothing
+    // unless --stop-after names it (port/include/port/boot.h).
+    port_boot_milestone("initcomponent");
+#endif
     GXSetMisc(1, 8);
     *HSD_RandSeedPtr = OSGetTick();
     lbAudioAx_8002838C();

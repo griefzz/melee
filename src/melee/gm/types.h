@@ -22,6 +22,28 @@
 #define GM_NAMETAG_BANK_SIZE 19
 
 /// @deprecated Replace with inline bitfields
+#ifdef PORT
+// PORT: the game assigns `byte` a number and reads the bits back. MWCC
+// allocates a bitfield run from the most significant bit down, so on the
+// console `b0` is 0x80 and `b7` is 0x01, and `byte = 1` sets b7; clang on
+// x86-64 allocates from the least significant bit up. Declared in reverse,
+// each bit lands where the console had it. Without this, b7, which
+// ftDrawCommon_80080E18_inline0() (ft/ftdrawcommon.c) tests before drawing a
+// fighter, stays clear. See docs/design/verification.md, "Bitfield order".
+typedef union UnkFlagStruct {
+    u8 byte;
+    struct UnkFlagStruct_x0 {
+        u8 b7 : 1;
+        u8 b6 : 1;
+        u8 b5 : 1;
+        u8 b4 : 1;
+        u8 b3 : 1;
+        u8 b2 : 1;
+        u8 b1 : 1;
+        u8 b0 : 1;
+    } x0;
+} UnkFlagStruct;
+#else
 typedef union UnkFlagStruct {
     u8 byte;
     struct UnkFlagStruct_x0 {
@@ -35,6 +57,7 @@ typedef union UnkFlagStruct {
         u8 b7 : 1;
     } x0;
 } UnkFlagStruct;
+#endif
 
 struct UnkMultimanData {
     u16 x0_0 : 1;
@@ -174,6 +197,23 @@ struct FighterData {
     /* 0x7A */ UnkFlagStruct x7A;
     /* 0x7B */ s8 x7B;
     /* 0x7C */ struct FighterData_x7C {
+#ifdef PORT
+        // PORT: declared in reverse. Clang allocates a bitfield run from the
+        // least significant bit and MWCC from the most, and this halfword is
+        // saved to the memory card as a number (port/data/card_swap.c), so
+        // its value has to mean the same bits on both. The game reads it
+        // only by name (gmmain_lib.c).
+        u16 b13_to_15 : 3; ///< stocks
+        u16 b10_to_12 : 3; ///< stocks
+        u16 b789 : 3;      ///< stocks
+        u16 b6 : 1;
+        u16 b5 : 1;
+        u16 b4 : 1;
+        u16 b3 : 1;
+        u16 b2 : 1;
+        u16 b1 : 1;
+        u16 b0 : 1;
+#else
         u16 b0 : 1;
         u16 b1 : 1;
         u16 b2 : 1;
@@ -184,6 +224,7 @@ struct FighterData {
         u16 b789 : 3;      ///< stocks
         u16 b10_to_12 : 3; ///< stocks
         u16 b13_to_15 : 3; ///< stocks
+#endif
         u16 x7E;
         u8 x80;
         u8 x81;
@@ -1139,7 +1180,15 @@ struct lbl_8046B488_t {
     /* 0x1B2 */ u8 x1B2;
     /* 0x1AE */ s8 x1B3[0x1B8 - 0x1B3];
     /* 0x1B8 */ GmRouteCallback x1B8;
+#if defined(PORT) || defined(LINT)
+    // PORT: the event's player-init callback, which gm_16A2.c stores here
+    // through lbl_8046B488_event_player_init_cb_t. Four bytes of pad on the
+    // console; declared as a pointer so it does not run over x1C0 here. The
+    // layout is the same on PowerPC.
+    /* 0x1BC */ void* x1BC;
+#else
     /* 0x1BC */ char pad_1BC[0x1C0 - 0x1BC];
+#endif
     /* 0x1C0 */ s8 x1C0[0x1B];
     /* 0x1DB */ char pad_1DB[0x1E0 - 0x1DB];
 }; /* size = 0x1E0 */

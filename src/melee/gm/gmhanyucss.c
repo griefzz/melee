@@ -28,6 +28,16 @@ void gm_801BED3C(GameModeState* arg0)
 {
     CSSData* temp_r31 = gm_GetGameModeStateEnterData(arg0);
     temp_r31->vs = *gmVsMelee_GetVsData();
+#ifdef PORT
+    // PORT: every other route into GS_CSS sets all three fields of a CSSData
+    // (gmVsMelee_EnterCss() sets match_type, ko_counts and vs); this one sets
+    // only vs and leaves ko_counts at the zero of the static gm_8049BEE8.
+    // mnCharSel_8025D1C4() reads `css->ko_counts[port]` for every match_type
+    // that shows KO stars, match_type 0 among them, and dereferences null.
+    // This points it at the array the VS entry uses. The mode is a
+    // development one that retail menus cannot reach.
+    temp_r31->ko_counts = gmVsMelee_GetKOCounts();
+#endif
 
     gm_80164F18();
     if (temp_r31->match_type & 1) {

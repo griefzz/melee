@@ -66,10 +66,27 @@ typedef struct lbl_80472ED8_t {
 } lbl_80472ED8_t;
 ASSERT_SIZE(lbl_80472ED8_t, 0x6BC);
 
+#ifdef PORT
+// PORT: the clear record is one set of bytes reached three ways: written
+// through lbl_80472ED8_t's zero-length `record` tail (gm_80181B64()), read
+// through this overlay at console +0x6BC, and read by name as lbl_80473594.
+// On the console all three are 0x80473594, because the linker put it right
+// after lbl_80472ED8. Here the tail writes past the object, +0x6BC reads the
+// middle of it (it holds six pointers), and the name is a third place. This
+// makes them one object, whose record the three agree on.
+typedef struct RegClearRecordOverlay {
+    lbl_80472ED8_t main;
+    RegClearRecordState record[1];
+} RegClearRecordOverlay;
+_Static_assert(offsetof(RegClearRecordOverlay, record) ==
+                   offsetof(RegClearRecordOverlay, main.record),
+               "the tail, the overlay and lbl_80473594 must be one record");
+#else
 typedef struct RegClearRecordOverlay {
     u8 pad[0x6BC];
     RegClearRecordState record[1];
 } RegClearRecordOverlay;
+#endif
 
 typedef struct {
     /* 0x00 */ u32 scores[27];
@@ -110,8 +127,14 @@ static RecordBlock lbl_803D8D08[6] = {
         0x0FFFFFFF, 0x0FFFFFFF } },
 };
 
+#ifdef PORT
+static RegClearRecordOverlay port_regclear;
+#define lbl_80472ED8 (port_regclear.main)
+#define lbl_80473594 (port_regclear.record[0])
+#else
 lbl_80472ED8_t lbl_80472ED8;
 RegClearRecordState lbl_80473594;
+#endif
 
 int gm_80181A14(void)
 {
@@ -579,6 +602,17 @@ typedef struct {
 
 void gm_80182554(int arg0, int arg1)
 {
+#ifdef PORT
+    // PORT: +0x6BC past lbl_80472ED8 is the record only on the console; here
+    // it is the middle of lbl_80472ED8's spawn-entry pointers (x6AC..x6B4),
+    // and a Multi-Man Melee start would write its character and mode over
+    // them and never set the record. The same five fields, by name.
+    lbl_80473594.xC = arg0;
+    lbl_80473594.x8 = arg1;
+    lbl_80473594.x0 = 0;
+    lbl_80473594.x4 = 0;
+    lbl_80473594.x2 = 0;
+#else
     regclear_record_state* s = (regclear_record_state*) &lbl_80472ED8;
 
     s->x6C8 = arg0;
@@ -586,6 +620,7 @@ void gm_80182554(int arg0, int arg1)
     s->x6BC = 0;
     s->x6C0 = 0;
     s->x6BE = 0;
+#endif
 }
 
 static inline u16 gm_80182578_GetTimeFromData(RegClearRecordOverlay* data)

@@ -1,4 +1,7 @@
 #include "gm_1A3F.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include "gm_1A36.h"
 #include "gmmain_lib.h"
@@ -87,7 +90,13 @@ void preloadState(GameModeState* state)
         HSD_SisLib_803A6048(0xC000);
         break;
     case GS_CSS:
+#ifdef PORT
+        // PORT: Slippi's IncreaseTextHeap.asm (+0x54): the online character
+        // select's panel needs more room.
+        HSD_SisLib_803A6048(port_hook_css_text_heap_size(0x2400));
+#else
         HSD_SisLib_803A6048(0x2400);
+#endif
         break;
     default:
         HSD_SisLib_803A6048(0x4800);
@@ -385,6 +394,11 @@ void gm_801A4510(void)
     } else {
         state_machine.routing.curr_mode = GM_BOOT;
     }
+#ifdef PORT
+    // PORT: the game_boot hook. The Slippi mod draws the menu music once here
+    // (Random CSS Music v3's third injection, +0x98, the `li r0, 45` below).
+    port_hook_game_boot();
+#endif
     state_machine.routing.prev_mode = GM_COUNT;
 
     while (true) {
@@ -392,6 +406,12 @@ void gm_801A4510(void)
         if (gmMainLib_8046B0F0.resetting) {
             gmMainLib_8046B0F0.resetting = false;
         }
+#ifdef PORT
+        // PORT: the game_mode_next hook; --mode answers it after boot
+        // (port/game/debug/start_flags.c).
+        next_mode = (u8) port_hook_game_mode_next(
+            next_mode, state_machine.routing.curr_mode);
+#endif
         gamestate->routing.prev_mode = gamestate->routing.curr_mode;
         gamestate->routing.curr_mode = next_mode;
     }

@@ -13,7 +13,9 @@ extern UNK_T gmClassic_80470708[];
 extern DebugGameOverData gmClassic_80470850;
 extern UNK_T gmClassic_8047086C;
 extern UNK_T gmClassic_80472AF8;
+#ifndef PORT
 u8 gm_804908A0[112];
+#endif
 UNK_T gmClassic_804D68D0;
 
 typedef struct gmClassicMatchup {
@@ -92,7 +94,19 @@ typedef struct gmClassicSceneData {
 } gmClassicSceneData;
 ASSERT_SIZE(gmClassicSceneData, 0x560);
 
+#ifdef PORT
+// PORT: two statics the console laid end to end: gmClassicIntroDataBuffer at
+// 0x80490880 (0x20 bytes) and gm_804908A0 at 0x804908A0 (0x70 bytes).
+// gmClassicRuntimeData is exactly the two, and gmClassic_801B2D54() and
+// gm_Mode_Classic_OnLoad() cast the address of the first to it, so here a
+// read of `state` lands past the end of a 0x20-byte object. This makes them
+// one object. See docs/design/verification.md, "Statics laid end to end".
+gmClassicRuntimeData gmClassicRuntime;
+#define gmClassicIntroDataBuffer gmClassicRuntime.intro
+#define gm_804908A0 ((u8*) &gmClassicRuntime.state)
+#else
 gmClassicIntroData gmClassicIntroDataBuffer;
+#endif
 
 GameModeState gm_Mode_Classic_States[] = {
     {
@@ -598,8 +612,20 @@ static gm_803DDEC8Struct* gmClassic_801B2D54(gm_803DDEC8Struct* arg0)
     gmClassicRuntimeData* o =
         (gmClassicRuntimeData*) &gmClassicIntroDataBuffer;
     gm_803DDEC8Struct* ptr;
+#ifdef PORT
+    // PORT: gmClassicSceneData is gm_Mode_Classic_States (0x270 bytes) with
+    // gmClassic_803DDEC8 (0x2F0) laid after it by the console's linker, and
+    // only `matchups` is read through it. The states array holds pointers,
+    // so here it is larger and the two need not be adjacent. This points at
+    // the table itself, through a struct whose one member is the table, so
+    // the reads below keep their text.
+    struct {
+        gmClassic_803DDEC8Data matchups;
+    }* scene_data = (void*) &gmClassic_803DDEC8;
+#else
     gmClassicSceneData* scene_data =
         (gmClassicSceneData*) gm_Mode_Classic_States;
+#endif
 
     for (ptr = arg0; ptr->x0 != 0xD; ptr++) {
         if (ptr->x1 & 8) {
@@ -685,8 +711,16 @@ static gm_803DDEC8Struct* gmClassic_801B2D54(gm_803DDEC8Struct* arg0)
 void gm_Mode_Classic_OnLoad(void)
 {
     UnkAllstarData* data;
+#ifdef PORT
+    // PORT: the same overlay as in gmClassic_801B2D54(): only `matchups` is
+    // read, so this points at gmClassic_803DDEC8 itself.
+    struct {
+        gmClassic_803DDEC8Data matchups;
+    }* scene_data = (void*) &gmClassic_803DDEC8;
+#else
     gmClassicSceneData* scene_data =
         (gmClassicSceneData*) gm_Mode_Classic_States;
+#endif
     gmClassicRuntimeData* o =
         (gmClassicRuntimeData*) &gmClassicIntroDataBuffer;
     gm_803DDEC8Struct* entry;

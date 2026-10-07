@@ -36,6 +36,24 @@ struct gm_event_char_list {
 /// Per-level match init data; shares its first two bytes' bitfield layout
 /// with #StartMeleeRules.
 struct gm_evinit {
+#ifdef PORT
+    // PORT: sixteen bits of a u32 the event tables state, declared in
+    // reverse. MWCC fills a run from the top of the word down, so x0_0 is
+    // bits 31..29 there and the sixteen the console leaves unused are the
+    // low half; clang fills from the bottom up. See
+    // docs/design/verification.md, "Bitfield order".
+    /*      */ u32 port_pad0 : 16; ///< the console left these unused
+    /* 0x01 */ u32 x1_5 : 3;
+    /* 0x01 */ u32 x1_4 : 1;
+    /* 0x01 */ u32 x1_3 : 1;
+    /* 0x01 */ u32 x1_2 : 1;
+    /* 0x01 */ u32 x1_1 : 1;
+    /* 0x01 */ u32 x1_0 : 1;
+    /* 0x00 */ u32 x0_7 : 1;
+    /* 0x00 */ u32 x0_6 : 1;
+    /* 0x00 */ u32 x0_3 : 3;
+    /* 0x00 */ u32 x0_0 : 3;
+#else
     /* 0x00 */ u32 x0_0 : 3;
     /* 0x00 */ u32 x0_3 : 3;
     /* 0x00 */ u32 x0_6 : 1;
@@ -46,6 +64,7 @@ struct gm_evinit {
     /* 0x01 */ u32 x1_3 : 1;
     /* 0x01 */ u32 x1_4 : 1;
     /* 0x01 */ u32 x1_5 : 3;
+#endif
     /* 0x02 */ u8 is_teams;
     /* 0x03 */ s8 item_freq;
     /* 0x04 */ s8 sd_penalty;
@@ -91,6 +110,18 @@ struct gm_804D6900_x4_t {
     intptr_t x4 DAT_TYPE(gm_801BAB40_src);
 };
 
+#if defined(PORT) || defined(LINT)
+/// PORT: what event 43's x4 holds (GmEvent.dat 0x1F34): a time and the
+/// fighter who enters the match then. gm_801BE39C() and gm_801BC00C() read
+/// it as gm_804D6900_x4_t and cast x4 to a gm_801BAB40_src*, which the DAT
+/// transcoder cannot see; to it an intptr_t is a number. Named so that the
+/// pointer is relocated (k_indexed_blobs in port/data/rules/dat_blobs.c); x4
+/// lands at the same native offset as gm_804D6900_x4_t's.
+struct gm_804D6900_x4_entrant_t {
+    int x0;
+    struct gm_801BAB40_src* x4;
+};
+#endif
 struct gm_804D6900_t {
     /* 0x00 */ u8 kind;
     /* 0x01 */ u8 flags; ///< top 3 bits: player count

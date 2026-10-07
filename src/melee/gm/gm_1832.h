@@ -68,9 +68,20 @@ struct lbl_804D6604_t {
     /* 0x03C */ ClassicSlotVals x3C[4];
     /* 0x06C */ ClassicCharLayout x6C[28];
     /* 0x37C */ ClassicTeamEntry x37C[25];
+#if defined(PORT) || defined(LINT)
+    // PORT: both pads are floats the game reads past the arrays above them:
+    // x57C[3] (row 3 of the Giant stage's splash, read by fn_80184AB8() and
+    // fn_801861B8() in gm_1832.c) starts at 0x60C, and x37C[25] at 0x570.
+    // As u8 the DAT transcoder copies them unswapped and the names collapse
+    // to the origin.
+    /* 0x570 */ f32 pad_570[3];
+    /* 0x57C */ ClassicSplashRow x57C[3];
+    /* 0x60C */ f32 pad_60C[9];
+#else
     /* 0x570 */ u8 pad_570[0xC];
     /* 0x57C */ ClassicSplashRow x57C[3];
     /* 0x60C */ u8 pad_60C[0x24];
+#endif
     /* 0x630 */ ClassicSlotVals x630[3];
     /* 0x654 */ ClassicSlotVals x654[3];
     /* 0x678 */ ClassicSlotVals x678[4];

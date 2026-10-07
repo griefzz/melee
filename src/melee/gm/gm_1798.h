@@ -25,6 +25,19 @@
 /* 17A9B4 */ void fn_8017A9B4(int);
 /* 17AA78 */ void fn_8017AA78(const u8*);
 
+#ifdef PORT
+// PORT: four statics the console laid end to end, which ResultsDisplayLayout
+// covers in one: gm_1798.c reads the results screen's state through
+// `(ResultsDisplayLayout*) &lbl_8046E1B0` and writes it through the names.
+// As separate objects, `disp->state` reads past the first into whatever the
+// linker put there. One object, with the four names mapped onto its parts.
+extern ResultsDisplayLayout port_results_display;
+#define lbl_8046E1B0 (*(ResultsDisplayData*) &port_results_display)
+#define lbl_8046E38C (port_results_display.gobjs)
+#define lbl_8046E39C (port_results_display.jobjs)
+#define lbl_8046E3AC (port_results_display.state)
+#else
 extern lbl_8046E3AC_t lbl_8046E3AC;
+#endif
 
 #endif

@@ -27,6 +27,9 @@
 /* 1A4B9C */ void* gm_GetCurrentSceneExitData(void);
 /* 1A4BA8 */ u32 gm_801A4BA8(void);
 /* 1A4BB8 */ u32 gm_801A4BB8(void);
+#ifdef PORT
+u32 port_gm_scene_exit_requested(void);
+#endif
 /* 1A4BC8 */ HSD_GObj* gm_801A4BC8(void);
 /* 1A4BD0 */ void fn_801A4BD0(HSD_GObj*);
 /* 1A4BD4 */ void gm_801A4BD4(void);

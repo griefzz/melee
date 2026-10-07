@@ -1,4 +1,7 @@
 #include "gmvsmelee.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <Runtime/platform.h>
 
@@ -211,6 +214,13 @@ void gmVsMelee_ExitVs(GameModeState* state, u8 id0, u8 id1)
     MatchExitInfo* exit = gm_GetGameModeStateExitData(state);
     ssize_t i;
 
+#ifdef PORT
+    // PORT: the vs_exit_scene hook, for Slippi's Salty Runback (External,
+    // at +0x24, the `li r29, 0` before the loop): the single-winner exit
+    // becomes the match (A+B held) or the character select. Inert unless
+    // --slippi-general.
+    id0 = (u8) port_hook_vs_exit_scene(id0);
+#endif
     for (i = 0; i < GM_MAX_PLAYERS; i++) {
         if (exit->match_end.player_standings[i].pkind == Gm_PKind_Human) {
             gm_80162574(exit->match_end.player_standings[i].ckind,

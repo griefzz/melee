@@ -1,4 +1,7 @@
 #include <melee/ft/forward.h>
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include "gm_1601.h"
 #include "gm_16F1.h"
@@ -42,6 +45,16 @@ bool gm_80173754(u8 gameMode, u8 arg1)
         challenger_data.curr_mode = gameMode;
         gm_SetPendingGameMode(GM_CHALLENGER_APPROACH);
         gm_SetNewGameModePending();
+#ifdef PORT
+        // PORT: the save_all_unlocked hook. Datel's Unlock All Characters
+        // and Stages code, `041737B0 38600000`, puts `li r3,0` over this
+        // `return true` at +0x5C. The same code makes gm_801721EC() above
+        // answer false, so this is unreachable under it; it is reproduced
+        // because it is one of the code's fourteen writes.
+        if (port_hook_save_all_unlocked()) {
+            return false;
+        }
+#endif
         return true;
     }
     return false;

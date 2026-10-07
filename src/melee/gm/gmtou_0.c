@@ -144,6 +144,16 @@ typedef void (*lbl_803D9FD8_fn)(s32*, u32, u32);
     fn_80194F30, fn_801953C8, fn_80194F30, fn_80195AF0, fn_80195AF0,
     fn_80195CCC, fn_80194F30, fn_8019610C, fn_8019610C,
 };
+#ifdef PORT
+// PORT: lbl_803D9F80 is a byte table, pairs written {0, 74}, that the
+// console reads as big-endian halfwords, so {0, 74} is 74. On this host a
+// u16 read gives 0x4A00, which HSD_SisLib_803A6368() takes as a text id and
+// crashes on. TM_U16 composes the halfword the console reads; the u16
+// pointer stays for the byte reads through it below.
+#define TM_U16(i)                                                             \
+    ((u16) ((((const u8*) &lbl_803D9F80)[2 * (i)] << 8) |                     \
+            ((const u8*) &lbl_803D9F80)[2 * (i) + 1]))
+#endif
 
 void fn_80190ABC(int mode)
 {
@@ -165,13 +175,23 @@ void fn_80190ABC(int mode)
 
     switch (mode) {
     case 0: {
+#ifdef PORT
+        HSD_SisLib_803A6368(tm->x4E0,
+                            TM_U16(opt * 2 + !!gm_804771C4.match_type));
+#else
         HSD_SisLib_803A6368(tm->x4E0,
                             (table + opt * 2)[!!gm_804771C4.match_type]);
+#endif
         break;
     }
     case 2: {
+#ifdef PORT
+        HSD_SisLib_803A6368(tm->x4E8[opt],
+                            TM_U16(opt * 2 + !!gm_804771C4.match_type + 0xE));
+#else
         HSD_SisLib_803A6368(tm->x4E8[opt],
                             (table + opt * 2 + !!gm_804771C4.match_type)[0xE]);
+#endif
         break;
     }
     case 3: {
@@ -192,11 +212,19 @@ void fn_80190ABC(int mode)
                 display_val = val + 0xD7;
                 break;
             default:
+#ifdef PORT
+                display_val = lbl_803D9D20.x0[val] + TM_U16(opt + 0x1A);
+#else
                 display_val = lbl_803D9D20.x0[val] + table[opt + 0x1A];
+#endif
                 break;
             }
         } else {
+#ifdef PORT
+            display_val = TM_U16(opt + 0x1A);
+#else
             display_val = table[opt + 0x1A];
+#endif
             display_val += (&tm->match_type)[opt];
         }
         HSD_SisLib_803A6368(tm->x500[opt], display_val);

@@ -1,6 +1,9 @@
 #include "gmvs.h"
 
 #include <Runtime/platform.h>
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <string.h>
 
@@ -330,9 +333,32 @@ bool gm_8016B3D8(void)
     }
 }
 
+#ifdef PORT
+// PORT: the vs_one_player_disabled hook. Zauron's C-Stick in Single Player
+// code, `04 +0x64 <- nop`, makes the function answer "no" for every mode. On
+// the console that reaches its six real callers (two in camera.c, two in
+// fighter.c, fn_8016E730() and fn_80171A88()) and not the three copies MWCC
+// inlined in this file (get_unk_float(), fn_8016B5B0(),
+// gm_DefaultVSGetPauser()), which keep the real switch through
+// gm_IsCurrently1PMode_switch(). Inert unless --slippi-general.
+static bool gm_IsCurrently1PMode_switch(void);
+
+bool gm_IsCurrently1PMode_inline(void)
+{
+    if (port_hook_vs_one_player_disabled()) {
+        return false;
+    }
+    return gm_IsCurrently1PMode_switch();
+}
+
+static bool gm_IsCurrently1PMode_switch(void)
+{
+    switch (gm_GetCurrentGameMode()) {
+#else
 bool gm_IsCurrently1PMode_inline(void)
 {
     switch (gm_GetCurrentGameMode()) {
+#endif
     case GM_CLASSIC:
     case GM_ADVENTURE:
     case GM_ALLSTAR:
@@ -354,7 +380,11 @@ bool gm_IsCurrently1PMode_inline(void)
 
 static float get_unk_float(void)
 {
+#ifdef PORT
+    if (gm_IsCurrently1PMode_switch()) { // inlined on the console; see above
+#else
     if (gm_IsCurrently1PMode_inline()) {
+#endif
         return 1.0F;
     } else {
         switch (gm_8016B558()) {
@@ -420,7 +450,11 @@ float fn_8016B5B0(void)
     int i;
     PAD_STACK(4);
 
+#ifdef PORT
+    if (gm_IsCurrently1PMode_switch()) { // inlined on the console; see above
+#else
     if (gm_IsCurrently1PMode_inline()) {
+#endif
         float var_f1 = 3.0F;
         if (controller.state.unk_0 != 0) {
             if (vsscene->state.match_result == OUTCOME_TIMEOUT ||
@@ -632,7 +666,11 @@ int gm_DefaultVSGetPauser(void)
     int spPlayerId;
     PAD_STACK(0x18);
 
+#ifdef PORT
+    if (gm_IsCurrently1PMode_switch() || // inlined on the console; see above
+#else
     if (gm_IsCurrently1PMode_inline() ||
+#endif
         gm_GetCurrentGameMode() == GM_CHALLENGER_APPROACH ||
         (gm_GetCurrentGameMode() == GM_VS &&
          gm_GetCurrentSceneIndex() == 0x81))
@@ -921,7 +959,11 @@ MatchOutcome gm_GetMatchOutcome(void)
     return OUTCOME_NONE;
 }
 
+#if defined(PORT) || defined(LINT)
+void fn_8016C46C(MatchEnd* arg0)
+#else
 void fn_8016C46C(int arg0)
+#endif
 {
     if (gmVs_GetSceneController()->state.unk_9 != 0) {
         switch (gm_GetCurrentGameMode()) {
@@ -938,7 +980,11 @@ void fn_8016C46C(int arg0)
     }
 }
 
+#if defined(PORT) || defined(LINT)
+static inline void fn_8016C46C_dontinline(MatchEnd* arg0)
+#else
 static inline void fn_8016C46C_dontinline(int arg0)
+#endif
 {
     fn_8016C46C(arg0);
 }
@@ -1392,6 +1438,11 @@ void fn_8016CFE0(void)
         goto block_50;
     } else {
         tmp->state.match_result = gm_GetMatchOutcome();
+#ifdef PORT
+        // PORT: an unpaused match frame, where Slippi advances the frame
+        // index its recording and its netplay key on (fn_8016CFE0+0x2B4).
+        port_hook_vs_match_frame();
+#endif
         if (tmp->state.match_result == OUTCOME_NONE) {
             gm_DoPauseChecksAndRoutine(tmp, 1);
             if (tmp->state.unpause_timer != 0) {
@@ -1459,6 +1510,11 @@ void gm_Scene_Training_OnFrame(void)
             tmp->state.pause_timer--;
         }
     } else {
+#ifdef PORT
+        // PORT: an unpaused Training frame, counted for the AI agents.
+        // fn_8016CFE0_inline() above has no vs_match_frame site.
+        port_hook_training_match_frame();
+#endif
         gm_DoPauseChecksAndRoutine(tmp, 2);
         if (tmp->state.unpause_timer != 0) {
             tmp->state.unpause_timer--;
@@ -1525,7 +1581,11 @@ void fn_8016D634(void)
             copied_dst->is_teams = controller.start.is_teams;
             copied_dst->outcome = tmp->state.match_result;
             gm_80166378(copied_dst);
+#if defined(PORT) || defined(LINT)
+            fn_8016C46C_dontinline(copied_dst);
+#else
             fn_8016C46C_dontinline((int) copied_dst);
+#endif
             if (tmp->state.match_result != OUTCOME_NO_CONTEST &&
                 tmp->state.match_result != OUTCOME_RETRY)
             {
@@ -1565,6 +1625,11 @@ void gm_Scene_Vs_OnFrame(void)
         gm_801A4B60();
         break;
     }
+#ifdef PORT
+    // PORT: Slippi's recorder sends Game End from here
+    // (gm_Scene_Vs_OnFrame+0x84).
+    port_hook_vs_frame_done(&controller);
+#endif
     if (controller.start.on_frame_end != NULL) {
         controller.start.on_frame_end();
     }
@@ -1748,6 +1813,12 @@ void fn_8016DCC0(StartMeleeData* arg0)
             fn_8016A09C();
         }
     }
+#ifdef PORT
+    // PORT: the vs_players_ready hook, for Slippi's CostumeBoundCheck / main
+    // (Common, at +0x214, the epilogue). Inert unless --slippi-general
+    // (port/mods/slippi/slippi_general.c).
+    port_hook_vs_players_ready();
+#endif
 }
 
 static float direction(float x)
@@ -1892,6 +1963,12 @@ void fn_8016E124(void)
 /// @todo The loop's SFX flag load uses a different equivalent address form.
 void fn_8016E2BC(void)
 {
+#ifdef PORT
+    // PORT: Slippi's spawn order counts occupied slots rather than using
+    // the slot index. With players in ports 1 and 2 the two coincide; with
+    // an empty port between them they do not.
+    int port_order;
+#endif
     UNUSED u8 pad[8];
     Vec3 sp24;
     Vec3 sp18;
@@ -1931,9 +2008,36 @@ void fn_8016E2BC(void)
         fn_80169F50(Player_GetPlayerCharacter(0), Player_GetCostumeId(0));
     } else {
         fn_8016DEEC();
+#ifdef PORT
+        port_order = 0;
+#endif
         for (i = 0; i < 6; i++) {
             if (Player_GetPlayerSlotType(i) != Gm_PKind_NA) {
                 getSpawnPoint(i, &sp18);
+#ifdef PORT
+                // PORT: the match_spawn_point hook, for --neutral-spawn.
+                // Slippi's Dolphin injects NeutralSpawn (C216E510 00000098)
+                // at +0x254, between getSpawnPoint() above and
+                // Player_80032768() below, and replaces the position with a
+                // constant from a per-stage table. Slippi's recordings spawn
+                // there even where their Gecko list does not name the code.
+                // Off unless the Slippi mod's neutral_spawn is on.
+                if (port_hook_match_spawn_point((int) controller.start.stkind,
+                                       port_order, &sp18.x, &sp18.y))
+                {
+                    sp18.z = 0.0f;
+                    // PORT: the code also sets the facing ("always faces
+                    // spawned players toward stage center"), and the block
+                    // below cannot: fn_8016DEEC() has already faced every
+                    // player at the furthest opponent from the game's own
+                    // spawn points, so `facing == 0` there is false. A
+                    // fighter left facing off the stage turns, rather than
+                    // walks, at the first stick press toward the centre.
+                    Player_SetFacingDirection(i, sp18.x >= 0.0f ? -1.0f
+                                                                : +1.0f);
+                }
+                port_order++;
+#endif
                 tmp = &controller;
                 if (Player_GetFacingDirection(i) == 0.0F) {
                     if (Stage_80224DC8(controller.start.stkind) != 0) {
@@ -1997,6 +2101,11 @@ void fn_8016E730(StartMeleeData* arg0)
     VsSceneController* r30;
 
     db_Setup();
+#ifdef PORT
+    // PORT: Slippi's recorder sends Game Start from here
+    // (fn_8016E730+0x1C).
+    port_hook_match_start(arg0);
+#endif
     gm_SetDbPauseInputHandlers(gm_AnyControllerPressedStart,
                                gm_AnyControllerPressedZ);
     gm_SetPreGObjProcCallback(db_RunEveryFrame);
@@ -2098,8 +2207,18 @@ void gm_Scene_Vs_OnExit(void* user_data)
         data->xC = controller.state.x24C;
         data->xC.is_teams = controller.start.is_teams;
         data->xC.outcome = controller.state.match_result;
+#ifdef PORT
+        // PORT: the match_end_by_pause hook, for Slippi's Remember Who LRA
+        // Started (+0x68, after the store above): the pauser's slot, kept
+        // in the record's first byte. Inert unless --slippi-general.
+        port_hook_match_end_by_pause(&data->xC, controller.state.pauser);
+#endif
         gm_80166378(&data->xC);
+#if defined(PORT) || defined(LINT)
+        fn_8016C46C_dontinline(&data->xC);
+#else
         fn_8016C46C_dontinline((int) &data->xC);
+#endif
         if (tmp->state.match_result != OUTCOME_NO_CONTEST &&
             tmp->state.match_result != OUTCOME_RETRY)
         {
@@ -2131,6 +2250,13 @@ void gm_Scene_Vs_OnExit(void* user_data)
             }
         }
     }
+#ifdef PORT
+    // PORT: the vs_scene_exit hook, at this function's epilogue. The Slippi
+    // mod draws the menu music again on the way out (Random CSS Music v3,
+    // +0x1E0) and counts the KO stars the skipped results screen would have
+    // (CSS KO Stars, +0x1E4).
+    port_hook_vs_scene_exit();
+#endif
 }
 
 void gm_Scene_SuddenDeath_OnEnter(void* user_data)

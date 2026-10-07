@@ -22,10 +22,21 @@ struct gm_8016A22C_header {
 
 typedef void (*GmEventPlayerInitCallback)(s32 slot, u8 remaining_count);
 
+#ifdef PORT
+// PORT: lbl_8046B488_t's x1BC, at its own native offset (gm/types.h). With
+// the console's 0x1BC of pad, the eight-byte callback would cover four bytes
+// of pad and the first four of x1C0, the roster fn_80169A84() shuffles, and
+// fn_8016A4C8()'s spawner could find a callback no event had set.
+struct lbl_8046B488_event_player_init_cb_t {
+    char pad_0[offsetof(struct lbl_8046B488_t, x1BC)];
+    GmEventPlayerInitCallback event_player_init_cb;
+};
+#else
 struct lbl_8046B488_event_player_init_cb_t {
     char pad_0[0x1BC];
     GmEventPlayerInitCallback event_player_init_cb;
 };
+#endif
 ASSERT_SIZE(struct lbl_8046B488_event_player_init_cb_t, 0x1C0);
 
 struct lbl_8046B488_t* gm_1601_GetUnkData(void)
@@ -298,10 +309,21 @@ void fn_80169A84(u8 arg0, s8* arg1, s8* arg2)
         do {
             s8* q;
             u8 tmp;
+#ifdef PORT
+            // PORT: `&x0 + n` then `[0x1C0]` is x1C0[n] at the console's
+            // offset; here x1BC's pointer moves x1C0 to +0x1C8, and the
+            // shuffle would swap the roster with the callback's bytes. The
+            // same draw, by name.
+            q = lbl_8046B488.x1C0 + HSD_Randi(0x1B);
+            tmp = q[0];
+            i += 1;
+            q[0] = (u8) *p;
+#else
             q = &lbl_8046B488.x0 + HSD_Randi(0x1B);
             tmp = q[0x1C0];
             i += 1;
             q[0x1C0] = (u8) *p;
+#endif
             *p = tmp;
             p += 1;
         } while (i < CKind_Playable_Count);
@@ -329,7 +351,12 @@ void fn_80169A84(u8 arg0, s8* arg1, s8* arg2)
             p = arg1;
             arg1 = arg2;
             while (*arg1 != -2) {
+#ifdef PORT
+                // PORT: x1C0[idx], as above.
+                while ((result = (q = lbl_8046B488.x1C0 + idx)[0]) == -1) {
+#else
                 while ((result = (q = &lbl_8046B488.x0 + idx)[0x1C0]) == -1) {
+#endif
                     idx = (idx + 1) % 27;
                 }
                 result = Player_800325C8(result, 0);
@@ -607,7 +634,13 @@ void gm_8016A22C(s8 k0, s8 k1, s8 k2, u8 a3, u8 a4, u8 a5, int mode, int a7,
     struct gm_8016A22C_header* header;
     u8 x7_tmp;
 
+#ifdef PORT
+    // PORT: 0x1C0 is offsetof(struct lbl_8046B488_t, x1C0) on PowerPC; x1B8
+    // and x1BC above it are callback pointers, so the boundary is 0x1C8 here.
+    memzero(gp, offsetof(struct lbl_8046B488_t, x1C0));
+#else
     memzero(gp, 0x1C0);
+#endif
 
     lbl_8046B488.x0 = k0;
     lbl_8046B488.x1 = k1;
@@ -668,7 +701,11 @@ void gm_8016A22C(s8 k0, s8 k1, s8 k2, u8 a3, u8 a4, u8 a5, int mode, int a7,
     fn_80169A84(gp->xE, gp->x124, gp->x20);
 }
 
+#ifdef PORT
+void gm_8016A404(intptr_t arg0) // PORT: a function pointer; gm_16A2.h
+#else
 void gm_8016A404(s32 arg0)
+#endif
 {
     *gm_8016A404_event_player_init_cb(&lbl_8046B488) =
         (GmEventPlayerInitCallback) arg0;

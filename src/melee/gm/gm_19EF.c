@@ -92,6 +92,19 @@ static struct lbl_80479A98_t {
 
 static void fn_8019F2D4(u32 arg0);
 
+#ifdef PORT
+// PORT: the continue screen's ten coins are stored as
+// x4_u.jobj_slots[10..19] (fn_8019F9C4()). On the console byte 0x28 + 4 * i
+// is slot 9 + i; here the union sits at +8 and a slot is eight bytes, so
+// the byte offset reads x28.typed.gobj and unwritten slots as coins, and
+// each countdown frame writes a JObj's flags into a GObj. Indexed by slot.
+// fn_8019F9C4()'s own loop indexes pointers from the struct's base, which
+// agrees on both targets.
+#define GOVER_COIN(i) (lbl_80479A98.x4_u.jobj_slots[9 + (i)])
+#else
+#define GOVER_COIN(i) (((HSD_JObj**) ((u8*) &lbl_80479A98 + 0x28))[(i)])
+#endif
+
 static void fn_8019EFC4(HSD_PadStatus* pad)
 {
     HSD_JObj* child_next;
@@ -133,13 +146,9 @@ static void fn_8019EFC4(HSD_PadStatus* pad)
             s32 i;
             for (i = 10; i > 0; i--) {
                 if (i > lbl_80479A98.x70) {
-                    HSD_JObjSetFlags(
-                        ((HSD_JObj**) ((u8*) &lbl_80479A98 + 0x28))[i],
-                        JOBJ_HIDDEN);
+                    HSD_JObjSetFlags(GOVER_COIN(i), JOBJ_HIDDEN);
                 } else {
-                    HSD_JObjClearFlags(
-                        ((HSD_JObj**) ((u8*) &lbl_80479A98 + 0x28))[i],
-                        JOBJ_HIDDEN);
+                    HSD_JObjClearFlags(GOVER_COIN(i), JOBJ_HIDDEN);
                 }
             }
         }

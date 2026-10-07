@@ -16,6 +16,10 @@
 #include <sysdolphin/baselib/jobj.h>
 #include <sysdolphin/baselib/memory.h>
 #include <sysdolphin/baselib/sislib.h>
+#ifdef PORT
+#include <port/reached.h>
+#include <stdio.h>
+#endif
 
 struct unkd4d0_8 {
     struct unkd4d0_8* next;
@@ -65,6 +69,17 @@ bool gm_801ADE1C(int arg0, int arg1, f32 arg2, f32 arg3)
     next->unk10 = arg1;
     next->unk14 = arg2;
     next->unk18 = arg3;
+#ifdef PORT
+    // PORT: observation only. Names the memory-card message in the run's
+    // reached list, so a harness can require the one a card state should
+    // produce (tools/run/card_check.py).
+    {
+        char name[16];
+
+        sprintf(name, "sdmsg:0x%X", arg1);
+        port_reached(name);
+    }
+#endif
 
     for (; true; cur = cur->next) {
         if (cur->next != NULL) {

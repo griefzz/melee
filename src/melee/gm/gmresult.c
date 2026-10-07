@@ -17,7 +17,16 @@ static void order_sdata(void)
 #endif
 
 struct ResultsData lbl_8046DBE8;
+#ifdef PORT
+// PORT: Shift-JIS text the console stores as big-endian words and prints
+// through its address with "%s", here and in the three statics below. On a
+// little-endian host the words' bytes run the other way, so the signs print
+// as empty strings and the time placeholder as other characters. The same
+// bytes, spelled out: "－－－".
+static u8 lbl_804D3F8C[8] = { 0x81, 0x7C, 0x81, 0x7C, 0x81, 0x7C, 0, 0 };
+#else
 static u32 lbl_804D3F8C[2] = { 0x817C817C, 0x817C0000 };
+#endif
 
 #ifdef MUST_MATCH
 static void gmresult_sdata2_order(void)
@@ -50,12 +59,23 @@ static void gmresult_sdata2_order(void)
 }
 #endif
 
+#ifdef PORT
+// PORT: "－", "＋" and "－：－" (see lbl_804D3F8C).
+u8 lbl_804D3FA0[4] = { 0x81, 0x7C, 0, 0 };
+u8 lbl_804D3FA4[4] = { 0x81, 0x7B, 0, 0 };
+union {
+    u32 words[2];
+    char text[8];
+} lbl_804D3FA8 = { .text = { (char) 0x81, 0x7C, (char) 0x81, 0x46,
+                             (char) 0x81, 0x7C, 0, 0 } };
+#else
 u32 lbl_804D3FA0 = 0x817C0000;
 u32 lbl_804D3FA4 = 0x817B0000;
 union lbl_804D3FA8_t {
     u32 words[2];
     char text[8];
 } lbl_804D3FA8 = { { 0x817C8146, 0x817C0000 } };
+#endif
 
 HSD_Archive* lbl_804D65B8;
 

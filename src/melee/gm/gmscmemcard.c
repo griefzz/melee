@@ -1,4 +1,7 @@
 #include "gmscmemcard.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include "gm_unsplit.h"
 #include "gmmain_lib.h"
@@ -295,6 +298,18 @@ void gm_Scene_MemCard_OnFrame(void)
     case 0:
         temp_r29 = lb_8001CBBC();
         gmMainLib_8015FA34(temp_r29);
+#ifdef PORT
+        // PORT: the memcard_prompt_skipped hook, for Slippi's Skip Memcard
+        // Prompt (External, at +0x18C, the compare below): with no card
+        // there is no prompt, and this takes the exit cases 18 and 19 take
+        // when the player declines. Inert unless --slippi-general.
+        if (port_hook_memcard_prompt_skipped(temp_r29)) {
+            enter_data.unk8.unk0 = 0;
+            enter_data.decision = tickDecision_20;
+            lbCardGame_SetCardStatus(LbCardStatus_4);
+            break;
+        }
+#endif
         if (temp_r29 == 0 || temp_r29 == 2) {
             enter_data.unk8.unk0 = 1;
             enter_data.decision = 0x14;

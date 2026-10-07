@@ -1664,7 +1664,17 @@ void fn_8019A158(void)
         cursor = (u8*) &lbl_80473AB8[bracket_idx] + sel * 0x2C;
         {
             u8 model_idx = cursor[0x50];
+#ifdef PORT
+            // PORT: Lbl804799D8Text puts x4E at the console's +0x4E, which
+            // here is the top of the x48 pointer, and the name would run over
+            // x4C and x4D, the controller fn_8019AF50() reads. The field, by
+            // name.
+            fn_8018F00C(
+                (char*) ((struct Lbl804799D8_t*) base_ptr)->x4E,
+                td1->x37[model_idx].x9);
+#else
             fn_8018F00C(base_ptr->x4E, td1->x37[model_idx].x9);
+#endif
         }
     }
 }
@@ -2056,11 +2066,23 @@ void fn_8019AF50(s32* arg0, u32 arg1, u32 arg2)
             if (lbl_804799D8.x0 >= 0x64U) {
                 int i;
                 u32 count = (lbl_804799D8.x0 - 0x64) / 15;
+#ifdef PORT
+                // PORT: +0x4E is x4E, the name fn_8019A158() writes, only on
+                // the console; here the x48 pointer above it moves it to
+                // +0x52.
+                u8* base = lbl_804799D8.x4E;
+#else
                 u8* base = (u8*) &lbl_804799D8;
+#endif
                 u8* dest = (u8*) &sp_buf;
                 for (i = 0; i < count; i++) {
+#ifdef PORT
+                    dest[0] = base[0];
+                    dest[1] = base[1];
+#else
                     dest[0] = base[0x4E];
                     dest[1] = base[0x4F];
+#endif
                     base += 2;
                     dest += 2;
                 }
@@ -2073,7 +2095,11 @@ void fn_8019AF50(s32* arg0, u32 arg1, u32 arg2)
                     lbl_804799D8.x0 = 0xFA;
                 }
             }
+#ifdef PORT
+            HSD_SisLib_803A70A0(tm->x524[3], 0, (char*) lbl_804799D8.x4E);
+#else
             HSD_SisLib_803A70A0(tm->x524[3], 0, (char*) &lbl_804799D8 + 0x4E);
+#endif
         }
     } else {
         if (lbl_804799D8.x0 < 0xFAU) {

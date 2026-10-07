@@ -501,7 +501,13 @@ void onEnterVs(GameModeState* arg0)
             gm_8016A434();
         }
         if (event_info[level]->x4 != NULL) {
+#ifdef PORT
+            // PORT: widened; the callback's address does not survive an s32
+            // here (gm_16A2.h).
+            gm_8016A404((intptr_t) event_info[level]->x4);
+#else
             gm_8016A404((s32) event_info[level]->x4);
+#endif
         }
         if (levels[level]->evbonus->x15 != 0) {
             gm_8016A424(levels[level]->evbonus->x15);
@@ -1579,7 +1585,18 @@ void gm_801BD46C(HSD_GObj* gobj)
     VsSceneController* temp_r3;
     s32 var_r0;
     struct EventData* temp_r31;
+#ifdef PORT
+    // PORT: a slot whose second entity is absent skips the assignment below
+    // and tests this anyway. The console keeps it in r30, saved at entry and
+    // never initialised, so iteration 1 tests the caller's leftover and
+    // iteration 2 carries iteration 1's value; the count decides whether the
+    // Event Match is cleared. Only initialised: folding the NULL test into the
+    // `if` would also drop the carry from i == 1 to i == 2, which the console
+    // has.
+    s32 var_r30 = 0;
+#else
     s32 var_r30;
+#endif
     int i;
     int count;
     HSD_GObj* p;

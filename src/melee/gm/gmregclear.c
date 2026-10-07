@@ -61,7 +61,17 @@ struct lbl_80472D28_t {
     /* +7C */ HSD_Text* x7C;
     /* +80 */ HSD_Text* x80;
     /* +84 */ HSD_Text* x84;
+#ifdef PORT
+    // PORT: what the console keeps in the 0x38 bytes after x84: the seven
+    // row texts fn_8017F2A4() creates at `&x84 + 1`, and the seven values
+    // fn_8017F47C() caches at `(s32*) &x84 + 8`. On the console that is seven
+    // 4-byte pointers and then the values; here the pointers alone fill the
+    // 0x38, and the cache would write scores over rows 3 to 6. Named.
+    /* +88 */ HSD_Text* x88_rows[7];
+    /* +A4 */ s32 xA4_row_values[7];
+#else
     /* +88 */ char pad_88[0x38];
+#endif
     /* +C0 */ u16 xC0;
     /* +C2 */ u16 pad_C2;
     /* +C4 */ u32 xC4;
@@ -299,6 +309,27 @@ s32 fn_8017F47C(HSD_Text** arg0, int arg1)
             break;
         }
 
+#ifdef PORT
+        {
+            // PORT: p[8] is xA4_row_values[i] on the console (the struct
+            // above).
+            s32* cached =
+                &((struct lbl_80472D28_t*) ((u8*) arg0 -
+                                            offsetof(struct lbl_80472D28_t,
+                                                     x84)))
+                     ->xA4_row_values[i];
+
+            (void) p;
+            if (*cached != val) {
+                if (val < 0) {
+                    HSD_SisLib_803A70A0(*arg0, i, "%s%d", "－", -val);
+                } else {
+                    HSD_SisLib_803A70A0(*arg0, i, "%d", val);
+                }
+                *cached = val;
+            }
+        }
+#else
         if (p[8] != val) {
             if (val < 0) {
                 HSD_SisLib_803A70A0(*arg0, i, "%s%d", "－", -val);
@@ -307,6 +338,7 @@ s32 fn_8017F47C(HSD_Text** arg0, int arg1)
             }
             p[8] = val;
         }
+#endif
 
         prev_idx = idx;
         entry = idx + 1;

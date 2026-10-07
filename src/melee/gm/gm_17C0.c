@@ -327,7 +327,16 @@ void gm_8017C838(void)
 
 void gm_8017C984(UNK_T arg0)
 {
+#ifdef PORT
+    // PORT: all three callers pass the mode's progress record, an
+    // UnkAdventureData (gmadventure.c) or an UnkAllstarData (gmallstar.c,
+    // gmclassic.c), and 0x74 is offsetof(x74) in both, where this clear
+    // stops. Both have pointers above it and both put x74 at 0xA0 here, so
+    // one offset serves either and the parameter stays UNK_T.
+    memzero(arg0, offsetof(UnkAllstarData, x74));
+#else
     memzero(arg0, 0x74);
+#endif
 }
 
 static const u8 lbl_803B7C08[3][5] = {

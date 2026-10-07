@@ -33,7 +33,13 @@ void gm_8016A21C(StartMeleeRules*);
 void gm_8016A22C(s8 ckind0, s8 ckind1, s8 ckind2, u8, u8, u8, int, int,
                  u8 color, u8, u8, int opp_count, int, int, int, int, int, f32,
                  f32);
+#ifdef PORT
+// PORT: a function pointer (gmevent.c's event_info[level]->x4). The image is
+// linked at 0x80000000, so as an s32 it sign-extends.
+void gm_8016A404(intptr_t arg0);
+#else
 void gm_8016A404(s32 arg0);
+#endif
 void gm_8016A414(f32 arg8);
 void gm_8016A424(s8 arg0);
 void gm_8016A434(void);

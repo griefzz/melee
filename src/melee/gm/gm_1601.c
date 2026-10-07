@@ -1,4 +1,7 @@
 #include "gm_1601.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <Runtime/platform.h>
 
@@ -2464,6 +2467,14 @@ bool gm_80164430(u16 arg0)
     {
         return true;
     }
+#ifdef PORT
+    // PORT: the save_all_unlocked hook. Datel's Unlock All Characters and
+    // Stages code, `041644E8 38600001`, puts `li r3,1` over the `li r3,0` at
+    // +0xB8, so every stage is unlocked (port/mods/slippi/slippi_general.c).
+    if (port_hook_save_all_unlocked()) {
+        return true;
+    }
+#endif
     return false;
 }
 
@@ -2493,6 +2504,14 @@ bool gm_80164600(void)
 
     for (i = 0; i < NUM_UNLOCKABLE_STAGES; i++) {
         if (!(*stage_unlock_mask & (1LL << i))) {
+#ifdef PORT
+            // PORT: the save_all_unlocked hook. Datel's Unlock All
+            // Characters and Stages code, `04164658 38600001`, puts `li r3,1`
+            // over this `return false` at +0x58.
+            if (port_hook_save_all_unlocked()) {
+                return true;
+            }
+#endif
             return false;
         }
     }
@@ -2542,6 +2561,14 @@ bool gm_IsCKindUnlocked(u8 ckind)
     {
         return true;
     }
+#ifdef PORT
+    // PORT: the save_all_unlocked hook. Datel's Unlock All Characters and
+    // Stages code, `041648F4 38600001`, puts `li r3,1` over the `li r3,0` at
+    // +0xB4, so every character is unlocked.
+    if (port_hook_save_all_unlocked()) {
+        return true;
+    }
+#endif
     return false;
 }
 
@@ -2595,6 +2622,14 @@ bool gm_80164ABC(void)
         if (!(*unlockable_character_bitfield & (1LL << i))) {
             /// @remarks Gekko codes which unlock all characters change this to
             ///          return @c true.
+#ifdef PORT
+            // PORT: the save_all_unlocked hook. Datel's Unlock All
+            // Characters and Stages code, `04164B14 38600001`, is the code
+            // named above: `li r3,1` over this `return false` at +0x58.
+            if (port_hook_save_all_unlocked()) {
+                return true;
+            }
+#endif
             return false;
         }
     }
@@ -3252,6 +3287,27 @@ float fn_80166A8C(register Vec3* src, register Vec3* dst)
     register float x = src->x;
     asm { psq_st x, Vec3.x(dst), 1, qr3 }
     return x;
+#elif defined(PORT) || defined(LINT)
+    // PORT: a C arm for the psq_st. It stores one element through GQR3,
+    // which OSInitFastCast() (THPDec.c, run by THPInit() before any match
+    // can end) programs as an unsigned 16-bit store with scale 0: the float
+    // is clamped to 0..65535 and truncated toward zero, two bytes at dst->x,
+    // as Dolphin's ScaleAndClamp<u16>() (Interpreter_LoadStorePaired.cpp)
+    // does. gm_80166378() reads the result back as a u16. Upstream has no C
+    // arm (doldecomp/melee#3456), and without one the stat is whatever the
+    // stack held.
+    float x = src->x;
+    u16 q;
+
+    if (!(x > 0.0f)) {
+        q = 0;
+    } else if (x >= 65535.0f) {
+        q = 65535;
+    } else {
+        q = (u16) x;
+    }
+    *(u16*) dst = q;
+    return x;
 #endif
 }
 
@@ -3730,16 +3786,38 @@ void gm_InitVsMode(VsModeData* vs)
     vs->winner = -1;
 }
 
+#ifdef PORT
+extern GameRules gmMainLib_DefaultGameRules;         // gmmain_lib.c
+extern struct GamePrefs gmMainLib_DefaultGamePrefs; // gmmain_lib.c
+#endif
 void gm_80167BC8(VsModeData* vs_data)
 {
     GameRules* rules;
     struct GamePrefs* prefs;
     s32 i;
     s8* handicap;
+#ifdef PORT
+    int from_defaults;
+#endif
     PAD_STACK(72);
 
+#ifdef PORT
+    // PORT: the vs_rules_from_defaults hook. A netplay match is built from
+    // the rules every client starts with (the defaults, as the mods and the
+    // command line set them), never from this player's own: the other side
+    // cannot see them, and the two sides would start one match under two
+    // sets of rules. The preferences (item frequency and switches) are the
+    // save's, which the memory card keeps between runs; Slippi's client runs
+    // with no card, so its are always the defaults its General Codes wrote.
+    from_defaults = port_hook_vs_rules_from_defaults();
+    rules = from_defaults ? &gmMainLib_DefaultGameRules
+                          : gmMainLib_GetGameRules();
+    prefs = from_defaults ? &gmMainLib_DefaultGamePrefs
+                          : gmMainLib_GetGamePrefs();
+#else
     rules = gmMainLib_GetGameRules();
     prefs = gmMainLib_GetGamePrefs();
+#endif
     vs_data->start.rules.timer_enabled = 0;
 
     switch (rules->mode) {
@@ -3809,7 +3887,13 @@ void gm_80167BC8(VsModeData* vs_data)
     vs_data->start.rules.friendly_fire = (rules->friendly_fire & 1);
     vs_data->start.rules.x30 = 0.1f * rules->damage_ratio;
     vs_data->start.rules.item_freq = (s8) prefs->item_freq;
+#ifdef PORT
+    if (!from_defaults) {
+        prefs = gmMainLib_GetGamePrefs();
+    }
+#else
     prefs = gmMainLib_GetGamePrefs();
+#endif
     for (i = 0; i < 0x20; i++) {
         u8 item = lbl_803B7844[(u8) i];
         if ((s32) item != 0x23) {
@@ -3821,7 +3905,13 @@ void gm_80167BC8(VsModeData* vs_data)
         }
     }
 
+#ifdef PORT
+    // PORT: gmMainLib_8015ED30() reads the live rules' unk_xc, so a match
+    // built from the defaults reads theirs.
+    switch (from_defaults ? rules->unk_xc : gmMainLib_8015ED30()) {
+#else
     switch (gmMainLib_8015ED30()) {
+#endif
     case 1:
         vs_data->start.rules.sd_penalty = 0;
         break;
@@ -4045,6 +4135,36 @@ struct fn_80168A6C_src {
 };
 
 void fn_80168A6C(void* arg0, void* arg1, s32 idx)
+#ifdef PORT
+{
+    // PORT: `arg0` is a SceneDesc and `arg1` the caller's state from a
+    // DynamicModelDesc on (fn_80180630_GetModelDesc() in gmregclear.c), then
+    // its light list, camera, camera animations and fog. The console copies
+    // eight words, right only where each of those is four bytes; as s32
+    // stores they truncate every pointer and land across the wrong fields,
+    // and lb_80011AC4() (lbspdisplay.c) reads a null light list. This is
+    // the same copy, by field.
+    struct {
+        DynamicModelDesc model;
+        LightList** lights;
+        HSD_CObjDesc* camera;
+        HSD_CameraAnim** camera_anims;
+        SceneFogDesc* fogs;
+    }* dst = arg1;
+    SceneDesc* src = arg0;
+
+    memzero(dst, sizeof(*dst));
+    if (src->models[idx] != NULL) {
+        dst->model = *src->models[idx];
+    }
+    if (src->cameras != NULL) {
+        dst->camera = src->cameras[0].desc;
+        dst->camera_anims = src->cameras[0].anims;
+    }
+    dst->lights = src->lights;
+    dst->fogs = src->fogs;
+}
+#else
 {
     struct fn_80168A6C_src* src = arg0;
 
@@ -4065,6 +4185,7 @@ void fn_80168A6C(void* arg0, void* arg1, s32 idx)
     ((s32*) arg1)[4] = src->x8;
     ((s32*) arg1)[7] = src->xC;
 }
+#endif
 
 f32 gm_80168B34(CharacterKind ckind, int arg1, int arg2)
 {
@@ -4093,6 +4214,16 @@ f32 gm_80168B34(CharacterKind ckind, int arg1, int arg2)
         base = 0xE;
     } else if (ckind > CKind_Seak) {
         base = ckind - 1;
+#ifdef PORT
+        // PORT: no branch above assigns `base` for the kinds below Sheik that
+        // it does not name, so clang returns an uninitialised int for their
+        // stock icons. MWCC kept `base` in r3, which already held `ckind`, so
+        // the console's fall-through is `ckind`, and that is the right index:
+        // the table skips one slot only above Sheik, who shares Zelda's (the
+        // `- 1` above). Correct on PowerPC too.
+    } else {
+        base = ckind;
+#endif
     }
     return base + arg2 * 30;
 }

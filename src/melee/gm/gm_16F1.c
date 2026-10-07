@@ -1,6 +1,9 @@
 #include "gm_16F1.h"
 
 #include <Runtime/platform.h>
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <melee/pl/forward.h>
 
@@ -1696,6 +1699,16 @@ static inline bool gm_801721EC_4(void)
 bool gm_801721EC(void)
 {
     if (gm_801721EC_2() || gm_801721EC_4()) {
+#ifdef PORT
+        // PORT: the save_all_unlocked hook. Datel's Unlock All Characters
+        // and Stages code, `0417229C 38600000`, puts `li r3,0` over this
+        // `return true` at +0xB0, the function's only one: nothing is ever
+        // pending, so no challenger approaches and no notification scene
+        // runs.
+        if (port_hook_save_all_unlocked()) {
+            return false;
+        }
+#endif
         return true;
     }
     return false;

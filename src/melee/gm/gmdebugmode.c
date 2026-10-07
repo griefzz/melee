@@ -1,4 +1,7 @@
 #include <melee/mn/forward.h>
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include "gm_1A3F.h"
 #include "gm_unsplit.h"
@@ -275,7 +278,15 @@ int fn_801B09F8(int arg0)
 {
     if (arg0 == 0) {
         sfxBack();
+#ifdef PORT
+        // PORT: the debug_menu_enabled hook, for Achilles' Exiting Debug Menu
+        // Returns to CSS, `04 +0x1C <- li r3, 2`: GM_VS in place of
+        // GM_TITLE. Inert unless --slippi-general.
+        gm_ChangeGameModeAfterCurrentScene(
+            port_hook_debug_menu_enabled() ? GM_VS : GM_TITLE);
+#else
         gm_ChangeGameModeAfterCurrentScene(GM_TITLE);
+#endif
         gm_801A4B60();
     }
     return 0;

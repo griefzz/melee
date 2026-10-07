@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "gmscene.h"
 
 #include "gm_1A36.h"
@@ -211,6 +214,15 @@ u32 gm_801A4BB8(void)
     return gm_80479D58.unk_8;
 }
 
+#ifdef PORT
+// PORT: whether the scene has been asked to end (gm_801A4B60() and
+// gm_801A4B74() set it): the word at 0x80479D64 that Slippi's in-game delay
+// tests. The struct is static and has no accessor for it.
+u32 port_gm_scene_exit_requested(void)
+{
+    return gm_80479D58.unk_C;
+}
+#endif
 HSD_GObj* gm_801A4BC8(void)
 {
     return gm_804D672C;
@@ -344,6 +356,15 @@ void gm_801A4D34(void (*on_frame)(void), UNUSED GameSceneInfo* info)
             if (temp_r25->unk_10.pre_gobj_proc != NULL) {
                 temp_r25->unk_10.pre_gobj_proc();
             }
+#ifdef PORT
+            // PORT: the scene_frame hook, for --slippi-online. Slippi syncs
+            // the RNG every frame from a GObj proc of type 4 (the player
+            // type, so it runs before any player animation), overwriting
+            // sysdolphin's seed with `(global frame << 16) + the match's RNG
+            // offset`. This is that proc, immediately before the dispatcher
+            // that runs every gobj (port/mods/slippi/slippi.c).
+            port_hook_scene_frame((unsigned) temp_r25->unk_8);
+#endif
             HSD_GObj_RunProcs();
             if (temp_r25->unk_0 != -2) {
                 temp_r25->unk_0++;

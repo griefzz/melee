@@ -13,6 +13,9 @@
 #include <melee/mn/mnsnap.h>
 #include <melee/mn/types.h>
 #include <sysdolphin/baselib/memory.h>
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 struct DebugSoundTestData {
     struct SoundTestMenuData* x0;
@@ -80,6 +83,11 @@ void onEnter(GameModeState* scene)
     lbCardGame_LoadArchive(0);
     lbSnap_8001E218(HSD_MemAlloc(lbSnap_8001E204()),
                     HSD_MemAlloc(lbSnap_8001E210()));
+#ifdef PORT
+    // PORT: the menu_scene_prepare hook, where Slippi's OnMenuPrep.asm
+    // installs its Online Play submenu (+0x48).
+    port_hook_menu_scene_prepare();
+#endif
     {
         ssize_t i;
         for (i = 0; i < (signed) ARRAY_SIZE(mnSnap_804A0B90); i++) {
@@ -104,6 +112,15 @@ void onEnter(GameModeState* scene)
     if (previous_mode == GM_CHALLENGER_APPROACH) {
         previous_mode = gm_801737D8();
     }
+#ifdef PORT
+    // PORT: the menu_entry_chosen hook: a mod may choose the menu to open
+    // on. The switch below is a jump table on the console, and Slippi
+    // replaces two of its entries (OnMenuPrep.asm, boot.asm); this is those
+    // entries.
+    if (port_hook_menu_entry_chosen(data, previous_mode)) {
+        return;
+    }
+#endif
     switch (previous_mode) {
     case GM_CLASSIC:
         data->menu_kind = MENU_KIND_REG;

@@ -35,6 +35,9 @@
 #include <sysdolphin/baselib/tobj.h>
 #include <sysdolphin/baselib/util.h>
 #include <sysdolphin/baselib/wobj.h>
+#ifdef PORT
+#include <port/hooks.h>
+#endif
 
 static struct lbl_804735A8_t {
     int x0;
@@ -349,6 +352,12 @@ void fn_80184AB8(HSD_GObj* arg0)
     }
 
     if (lbl_8047368C.model_scale_kind != 3) {
+#ifdef PORT
+        // PORT: Slippi's online splash shows no stage number
+        // (SkipStageNumberShow).
+        if (port_hook_intro_stage_hidden()) {
+        } else
+#endif
         if (lbl_8047368C.xEE < 0xAU) {
             lb_80011E24(jobj, &sp110, 0x12, -1);
             HSD_TObjReqAnimAll(sp110->u.dobj->mobj->tobj,
@@ -462,6 +471,12 @@ void fn_8018504C(void)
 {
     int new_var;
     PAD_STACK(16);
+#ifdef PORT
+    // PORT: Slippi's online splash hides the stage preview (HideAllJObjs).
+    if (port_hook_intro_stage_hidden()) {
+        return;
+    }
+#endif
     new_var = 0x32;
     if (lbl_804735A8.x3A < 0x31U) {
         lbl_804735A8.x3A = (u16) (lbl_804735A8.x3A + 1);
@@ -571,7 +586,15 @@ static inline void gm_1832_sdata2_order(int unused)
 void fn_80185408(int x, float arg8, float arg9, float argA, float argB)
 {
     u8 _[0x30];
+#ifdef PORT
+    // PORT: MTXPerspective() and MTXOrtho() write a 4x4 (the SDK declares
+    // them on Mtx44) and this local is a 3x4, so the last row lands sixteen
+    // bytes past it. MWCC's frame absorbs that; clang's puts a live local
+    // there. Declared as the 4x4 the callee writes.
+    Mtx44 sp1C;
+#else
     Mtx sp1C;
+#endif
     GXSetNumChans(1);
     GXSetChanCtrl(GX_COLOR0A0, 0, GX_SRC_REG, GX_SRC_VTX, 0, GX_DF_NONE,
                   GX_AF_NONE);
@@ -593,18 +616,18 @@ void fn_80185408(int x, float arg8, float arg9, float argA, float argB)
     MTXOrtho(sp1C, 0.0F, 480.0F, 0.0F, 640.0F, 0.0F, 5000.0F);
     GXSetProjection(sp1C, GX_ORTHOGRAPHIC);
     GXBegin(GX_QUADS, GX_VTXFMT0, 4);
-    GXWGFifo.f32 = argA;
-    GXWGFifo.f32 = arg8;
-    GXWGFifo.f32 = -4932.0F;
-    GXWGFifo.f32 = argB;
-    GXWGFifo.f32 = arg8;
-    GXWGFifo.f32 = -4932.0F;
-    GXWGFifo.f32 = argB;
-    GXWGFifo.f32 = arg9;
-    GXWGFifo.f32 = -4932.0F;
-    GXWGFifo.f32 = argA;
-    GXWGFifo.f32 = arg9;
-    GXWGFifo.f32 = -4932.0F;
+    GXWG_F32(argA);
+    GXWG_F32(arg8);
+    GXWG_F32(-4932.0F);
+    GXWG_F32(argB);
+    GXWG_F32(arg8);
+    GXWG_F32(-4932.0F);
+    GXWG_F32(argB);
+    GXWG_F32(arg9);
+    GXWG_F32(-4932.0F);
+    GXWG_F32(argA);
+    GXWG_F32(arg9);
+    GXWG_F32(-4932.0F);
     GXSetColorUpdate(1);
     HSD_StateInvalidate(-1);
     gm_1832_sdata2_order(0);
@@ -685,7 +708,16 @@ void fn_801857C4(HSD_GObj* arg0)
 
     if (lbl_804735E8.xE1 != 0) {
         HSD_GObjFree(lbl_804D65F0);
+#ifdef PORT
+        // PORT: img_idx[0x90] is xD0[i]. On the console the six 0x18-byte
+        // image descriptors before it are 0x90 bytes; here they are 0xC0, and
+        // the read lands in x88[1]'s zeroed mipmap and LOD words, which draw
+        // costume 0 on every tile. fn_80185A0C() writes the table through
+        // `xD0 - 0x90` too.
+        img_idx = lbl_804735E8.xD0 - 0x90;
+#else
         img_idx = (u8*) lbl_804735E8.x40;
+#endif
         i = 0;
         delay = 1;
         for (; i < 10; i++, img_idx++) {
@@ -1158,6 +1190,11 @@ void gm_Scene_IntroEasy_OnEnter(void* arg0_)
     lbl_804735A8.x3C = 0;
     *(ClassicModeEnterData*) &lbl_8047368C.model_scale_kind = *arg0;
     fn_80186634(arg0_);
+#ifdef PORT
+    // PORT: Slippi's online splash adds its names and stage (InitVsSplash)
+    // and hides the stage display (HideLetterJObjs, HideAllJObjs).
+    port_hook_intro_entered(lbl_804735A8.x4[0], lbl_804735A8.x4[4]);
+#endif
     lbl_804D6608 = -1;
     gm_80167858((int) (s8) lbl_8047368C.xEC, lbl_8047368C.xED, 0xB, 0x2D);
     gm_80168F88();

@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "gmmain_lib.h"
 
 #include <Runtime/platform.h>
@@ -670,6 +673,17 @@ void gmMainLib_8015D924(u32 arg0)
 
 int gmMainLib_8015D94C(u32 arg0)
 {
+#ifdef PORT
+    // PORT: the save_skip_special_messages hook. Most's Disable Special
+    // Messages code, `0415D94C 4E800020`, is a `blr` on this function's first
+    // instruction, so it returns r3 as it arrived (the argument) and reads
+    // nothing. Unlock All's `0415D968 38600001` (`li r3,1` over the `and` at
+    // +0x1C) sits below that `blr` and never runs; the two are reproduced
+    // together (port/mods/slippi/slippi_general.c).
+    if (port_hook_save_skip_special_messages()) {
+        return (int) arg0;
+    }
+#endif
     return bitset_test_word(gmMainLib_GetCardData()->save_data.x1B4C, arg0);
 }
 
@@ -683,6 +697,16 @@ bool gmMainLib_8015D984(u32 arg0)
 {
     PAD_STACK(8);
 
+#ifdef PORT
+    // PORT: the save_skip_trophy_messages hook. Achilles' Disable Trophy
+    // Messages code, `0415D984 4E800020`, is a `blr` on the first
+    // instruction: r3 is the argument, and no flag is set. Unlock All's
+    // `0415D9D8 38600001` turns the `return false` at +0x54 into
+    // `return true`, and is below the `blr`.
+    if (port_hook_save_skip_trophy_messages()) {
+        return arg0;
+    }
+#endif
     if (gmMainLib_8015DA90(arg0) == 0) {
         *gmMainLib_8015D970(arg0) = lbTime_GetTimeInSeconds();
 
@@ -879,6 +903,15 @@ void gmMainLib_8015ECBC(void)
 
     GameRules* rules = &gmMainLib_804D3EE0->x1850;
     if (gm_80164600() && gm_80164ABC()) {
+#ifdef PORT
+        // PORT: the css_music hook, for UnclePunch's Random CSS Music v3 at
+        // +0x30: one of three menu songs, in place of the 3:1 draw between
+        // two. Inert unless --slippi-general.
+        int bgm = port_hook_css_music(-1);
+        if (bgm >= 0) {
+            rules->bgm = (u8) bgm;
+        } else
+#endif
         if (HSD_Randi(4) != 0) {
             rules->bgm = 0x34;
         } else {
@@ -956,6 +989,14 @@ struct gmm_x1868_1A8_t* gmMainLib_8015EDC8(void)
 
 s32 gmMainLib_8015EDD4(void)
 {
+#ifdef PORT
+    // PORT: the save_all_unlocked hook. Datel's Unlock All Characters and
+    // Stages code, `0415EDDC 38600001`, puts `li r3,1` over the `rlwinm` at
+    // +0x8 that extracts `& 4`, so All-Star reads as unlocked.
+    if (port_hook_save_all_unlocked()) {
+        return 1;
+    }
+#endif
     return gmMainLib_GetCardData()->save_data.x186C & 4;
 }
 
@@ -971,6 +1012,14 @@ void gmMainLib_8015EDF8(void)
 
 s32 gmMainLib_8015EE0C(void)
 {
+#ifdef PORT
+    // PORT: the save_all_unlocked hook. Datel's Unlock All Characters and
+    // Stages code, `0415EE14 38600001`, puts `li r3,1` over the `rlwinm` at
+    // +0x8 that extracts `& 1`, so the score display reads as unlocked.
+    if (port_hook_save_all_unlocked()) {
+        return 1;
+    }
+#endif
     return gmMainLib_GetCardData()->save_data.x186C & 1;
 }
 
@@ -986,6 +1035,14 @@ void gmMainLib_8015EE30(void)
 
 s32 gmMainLib_8015EE44(void)
 {
+#ifdef PORT
+    // PORT: the save_all_unlocked hook. Datel's Unlock All Characters and
+    // Stages code, `0415EE4C 38600001`, puts `li r3,1` over the `rlwinm` at
+    // +0x8 that extracts `& 2`, so random stage select reads as unlocked.
+    if (port_hook_save_all_unlocked()) {
+        return 1;
+    }
+#endif
     return gmMainLib_GetCardData()->save_data.x186C & 2;
 }
 
@@ -1003,6 +1060,14 @@ void gmMainLib_8015EE68(void)
 
 s32 gmMainLib_8015EE90(void)
 {
+#ifdef PORT
+    // PORT: the save_all_unlocked hook. Datel's Unlock All Characters and
+    // Stages code, `0415EE98 38600001`, puts `li r3,1` over the `rlwinm` at
+    // +0x8 that extracts `& 8`, so the sound test reads as unlocked.
+    if (port_hook_save_all_unlocked()) {
+        return 1;
+    }
+#endif
     return gmMainLib_GetCardData()->save_data.x186C & 8;
 }
 
@@ -1309,6 +1374,17 @@ void gmMainLib_8015FBA4(void)
         lbLang_SetSavedLanguage(0);
     }
 
+#ifdef PORT
+    // PORT: the rules_defaults hook, for --slippi-general, --stocks and
+    // --items. Five of Slippi's General Codes are word writes over these two
+    // static initialisers, and the code handler leaves the live copies
+    // alone; the rules menu and the memory card still change those. So the
+    // defaults are patched here, once, before this function copies them into
+    // the save data, and the values a recording carries land on top
+    // (port/mods/slippi/slippi_general.c).
+    port_hook_rules_defaults(&gmMainLib_DefaultGameRules,
+                                 &gmMainLib_DefaultGamePrefs);
+#endif
     gmMainLib_8045A6C0.x1850 = gmMainLib_DefaultGameRules;
     resetSaveData();
 }

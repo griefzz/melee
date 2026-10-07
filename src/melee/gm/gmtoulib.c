@@ -1768,6 +1768,17 @@ void fn_8018E618(int arg0, f32 farg0, int arg1)
     gobj = GObj_Create(9, 20, 1);
     {
         HSD_CObj* cobj = HSD_CObjLoadDesc((HSD_CObjDesc*) &cam);
+#ifdef PORT
+        // PORT: `CObjData` is nine floats followed by an lbl_803D9DD0_t, cast
+        // over lbl_803D9DAC, three Vec3s (0x24 bytes); 0x803D9DAC + 0x24 is
+        // 0x803D9DD0. The console's linker laid the two statics end to end,
+        // and here they are unrelated objects. The overlay exists to set one
+        // field, so it is set by name; left null, fn_801904D0() asserts in
+        // HSD_CObjSetInterest(). See docs/design/verification.md, "Statics
+        // laid end to end".
+        lbl_803D9DD0.cobj = cobj;
+        HSD_GObjObject_80390A70(gobj, HSD_GObj_CameraKind, lbl_803D9DD0.cobj);
+#else
         CObjData* cobj_data = (CObjData*) &lbl_803D9DAC;
         cobj_data->cobj_data.cobj = cobj;
         {
@@ -1775,6 +1786,7 @@ void fn_8018E618(int arg0, f32 farg0, int arg1)
             u8* kind_ptr = &HSD_GObj_CameraKind;
             HSD_GObjObject_80390A70(gobj, *kind_ptr, *cobj_ptr);
         }
+#endif
     }
     GObj_SetupGXLinkMax(gobj, HSD_GObj_803910D8, 1);
     gobj->gxlink_prios = 0x10;
@@ -1784,7 +1796,11 @@ void fn_8018E618(int arg0, f32 farg0, int arg1)
 
 void fn_8018E85C(DynamicModelDesc* model, s32 flag)
 {
+#if defined(PORT) || defined(LINT)
+    BracketEntrySlot* slot;
+#else
     u8* sub;
+#endif
     TmData* td;
     HSD_JObj* jobj;
     s32 outer_idx;
@@ -1807,8 +1823,19 @@ void fn_8018E85C(DynamicModelDesc* model, s32 flag)
         }
         inner_idx = 0;
         for (; inner_idx < 4; inner_idx++) {
+#if defined(PORT) || defined(LINT)
+            // PORT: the console reads the flat BracketEntry as
+            // `entry + 0x2C * i`, with the slot's fields at +0x2C and up.
+            // BracketEntrySlot names exactly those offsets, and it is 0x2C
+            // bytes there against 0x30 here (its leading HSD_GObj* is eight
+            // bytes and eight-aligned), so the byte stride and offsets miss
+            // here. Indexed by name, which is identical on the console.
+            slot = &lbl_80473AB8[outer_idx].slots[inner_idx];
+            if (slot->x30 == 0) {
+#else
             sub = &lbl_80473AB8[outer_idx].x0 + inner_idx * 0x2C;
             if (sub[0x30] == 0) {
+#endif
                 continue;
             }
 
@@ -1819,26 +1846,48 @@ void fn_8018E85C(DynamicModelDesc* model, s32 flag)
                         break;
                     }
                 }
+#if defined(PORT) || defined(LINT)
+                slot->x50 = (u8) j;
+#else
                 sub[0x50] = (u8) j;
+#endif
                 ptr = (u8*) td + j * 0x12;
+#if defined(PORT) || defined(LINT)
+                slot->x4D = ptr[0x3A];
+                slot->x4E = ptr[0x37];
+                slot->x4F = ptr[0x3E];
+                slot->x51 = ptr[0x38];
+                slot->x52 = ptr[0x39];
+                slot->x54 = *(u16*) (ptr + 0x40);
+#else
                 sub[0x4D] = ptr[0x3A];
                 sub[0x4E] = ptr[0x37];
                 sub[0x4F] = ptr[0x3E];
                 sub[0x51] = ptr[0x38];
                 sub[0x52] = ptr[0x39];
                 *(u16*) (sub + 0x54) = *(u16*) (ptr + 0x40);
+#endif
                 bracket_idx++;
             }
 
             gobj = GObj_Create(0xE, 0x1B, 0);
+#if defined(PORT) || defined(LINT)
+            slot->x2C = gobj;
+            gobj = slot->x2C;
+#else
             *(HSD_GObj**) (sub + 0x2C) = gobj;
             gobj = *(HSD_GObj**) (sub + 0x2C);
+#endif
             jobj = HSD_JObjLoadJoint(model->joint);
             HSD_GObjObject_80390A70(gobj, HSD_GObj_JObjKind, jobj);
             GObj_SetupGXLink(gobj, HSD_GObj_JObjCallback, 4, 2);
             gm_8016895C(jobj, model, 0);
 
+#if defined(PORT) || defined(LINT)
+            anim_frame = slot->x4D + slot->x4F * 0x1E;
+#else
             anim_frame = sub[0x4D] + sub[0x4F] * 0x1E;
+#endif
             HSD_JObjReqAnimAll(jobj, (f32) anim_frame);
             HSD_JObjAnimAll(jobj);
 
@@ -1859,8 +1908,13 @@ void fn_8018E85C(DynamicModelDesc* model, s32 flag)
             if (td->cur_option < 0x1F) {
                 fn_8018AA74(jobj, outer_idx, inner_idx);
             } else {
+#if defined(PORT) || defined(LINT)
+                fn_8018FDC4(jobj, (f32) slot->x44, -(f32) slot->x48,
+                            666.0f);
+#else
                 fn_8018FDC4(jobj, (f32) * (s32*) (sub + 0x44),
                             -(f32) * (s32*) (sub + 0x48), 666.0f);
+#endif
             }
         }
     }
@@ -2343,25 +2397,37 @@ void fn_8018FBD8(void* arg0, s32 arg1)
     ((HSD_GObj*) arg0)->user_data = (void*) arg1;
 }
 
+#ifdef PORT
+// PORT: one past the bracket's three source pointers is, on the console,
+// 0x80473AB8 + 0x370C = gm_804771C4: the linker laid the 64 entries, the
+// three pointers (lbl_804771B8) and the TmData end to end, and this function
+// reaches the TmData by walking off the end of the first. Here they are
+// three objects, and the Tournament Melee options would be written past the
+// bracket array while the menu reads gm_804771C4.
+#define GMTOU_OPTIONS (&gm_804771C4)
+#else
+#define GMTOU_OPTIONS ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])
+#endif
+
 void fn_8018FBE0(s32 arg0, s32 arg1, s32 arg2, s32 arg3, s32 arg4, s32 arg5,
                  s32 arg6)
 {
     s32 i;
 
-    ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])->cur_option = arg0;
-    ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])->x1C = arg1;
-    ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])->x20 = arg2;
+    GMTOU_OPTIONS->cur_option = arg0;
+    GMTOU_OPTIONS->x1C = arg1;
+    GMTOU_OPTIONS->x20 = arg2;
 
     for (i = 0; 64 > i; i++) {
-        ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])->x37[i].x2 =
+        GMTOU_OPTIONS->x37[i].x2 =
             (u8) arg3;
-        ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])->x37[i].x1 =
+        GMTOU_OPTIONS->x37[i].x1 =
             (u8) arg4;
-        ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])->x37[i].xD =
+        GMTOU_OPTIONS->x37[i].xD =
             (u8) i;
-        ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])->x37[i].x9 =
+        GMTOU_OPTIONS->x37[i].x9 =
             (u16) arg5;
-        ((TmData*) &((BracketData*) lbl_80473AB8)->srcs[3])->x37[i].x0 =
+        GMTOU_OPTIONS->x37[i].x0 =
             (u8) arg6;
     }
 }
