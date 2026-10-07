@@ -1,5 +1,24 @@
 #include "grlast.h"
 
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#include <sysdolphin/baselib/random.h> // HSD_RandSeedPtr
+#endif
+
+#ifdef PORT
+// PORT: the background's sway velocities are fmadds and fmsubs on the
+// console (grLast_8021AC30+0x48 and +0x84, grLast_8021ADD0+0x108, +0x148,
+// +0x23C and +0x27C), each rounded once, and fused here the same way. The
+// sway accumulates for the whole match and draws a new velocity whenever an
+// angle crosses its limit, so its last bits decide which frame a draw lands
+// on. See docs/design/build.md, "Rounding and division".
+#define LAST_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#define LAST_MSUB(a, b, c) __builtin_fmaf((a), (b), -(c))
+#else
+#define LAST_MADD(a, b, c) ((a) * (b) + (c))
+#define LAST_MSUB(a, b, c) ((a) * (b) - (c))
+#endif
+
 #include "granime.h"
 #include "grdisplay.h"
 #include "grlib.h"
@@ -363,6 +382,27 @@ static void grLast_8021AAB0(Ground_GObj* gobj)
 {
     Ground* gp = GET_GROUND(gobj);
     if (!gp->u.map.xC4_b1 && !gp->u.map.xC4_b0) {
+#ifdef PORT
+        // PORT: Slippi's DesyncProofBGTransformations.asm
+        // (Online/Core/Hacks/FD), at grLast_8021AAB0+0x34, wraps this one
+        // call in a save and a restore of the RNG seed, "ensuring consistent
+        // RNG behavior whether someone freezes or unfreezes the
+        // transformations". Whatever the background think draws is undone,
+        // and with Slippi's per-frame reseed a draw that is not undone moves
+        // every later draw index in the frame.
+        if (port_hook_fd_background_disabled()) {
+            // PORT: the General Codes' DisableFdTransitions.bin before
+            // Slippi 3.19, `04 8021AAE4 60000000`, is a nop over this call:
+            // the background never cycles, and never destroys map gobjs
+            // 4-8, whose sway (grLast_8021ADD0()) draws from the generator.
+            // Running the cycle on a 3.18 recording shifts every later draw
+            // by one.
+        } else if (port_hook_fd_background_rng_kept()) {
+            u32 saved_seed = *HSD_RandSeedPtr;
+            grLast_8021B2E8(gobj);
+            *HSD_RandSeedPtr = saved_seed;
+        } else
+#endif
         grLast_8021B2E8(gobj);
         if (gp->u.map.xC4_b26) {
             int tmp = grLast_8021B5C4(gobj);
@@ -437,9 +477,9 @@ static void grLast_8021AC30(Ground_GObj* gobj)
     gp->u.last.xC8 = 0;
     gp->u.last.xCC = 0;
     gp->u.last.xD0 = 0;
-    gp->u.last.xD4 = HSD_Randf() * grLast_804DBB80 + grLast_804DBB7C;
+    gp->u.last.xD4 = LAST_MADD(HSD_Randf(), grLast_804DBB80, grLast_804DBB7C);
     gp->u.last.xD4 *= HSD_Randi(2) ? +1.0F : -1.0F;
-    gp->u.last.xD8 = HSD_Randf() * grLast_804DBB80 + grLast_804DBB7C;
+    gp->u.last.xD8 = LAST_MADD(HSD_Randf(), grLast_804DBB80, grLast_804DBB7C);
     gp->u.last.xD8 *= HSD_Randi(2) ? +1.0F : -1.0F;
     gp->u.last.xDC = 0;
     gp->u.last.xE0 = 0;
@@ -494,12 +534,12 @@ static void grLast_8021ADD0(Ground_GObj* gobj)
         gp->u.last.xC4 = grLast_804DBB94;
         gp->u.last.xCC = -ABS(gp->u.last.xCC);
         randf = HSD_Randf();
-        gp->u.last.xD4 = grLast_804DBB80 * -randf - grLast_804DBB7C;
+        gp->u.last.xD4 = LAST_MSUB(grLast_804DBB80, -randf, grLast_804DBB7C);
     } else if (gp->u.last.xC4 < grLast_804DBB98) {
         float randf;
         gp->u.last.xC4 = grLast_804DBB98;
         gp->u.last.xCC = ABS(gp->u.last.xCC);
-        gp->u.last.xD4 = grLast_804DBB80 * HSD_Randf() + grLast_804DBB7C;
+        gp->u.last.xD4 = LAST_MADD(grLast_804DBB80, HSD_Randf(), grLast_804DBB7C);
     }
     HSD_JObjSetRotationX(jobj, gp->u.last.xC4 * gp->u.last.xDC);
     gp->u.last.xC8 += gp->u.last.xD0;
@@ -508,11 +548,11 @@ static void grLast_8021ADD0(Ground_GObj* gobj)
         gp->u.last.xC8 = grLast_804DBB9C;
         gp->u.last.xD0 = -ABS(gp->u.last.xD0);
         randf = HSD_Randf();
-        gp->u.last.xD8 = grLast_804DBB80 * -randf - grLast_804DBB7C;
+        gp->u.last.xD8 = LAST_MSUB(grLast_804DBB80, -randf, grLast_804DBB7C);
     } else if (gp->u.last.xC8 < grLast_804DBBA0) {
         gp->u.last.xC8 = grLast_804DBBA0;
         gp->u.last.xD0 = ABS(gp->u.last.xD0);
-        gp->u.last.xD8 = grLast_804DBB80 * HSD_Randf() + grLast_804DBB7C;
+        gp->u.last.xD8 = LAST_MADD(grLast_804DBB80, HSD_Randf(), grLast_804DBB7C);
     }
     HSD_JObjSetRotationY(jobj, gp->u.last.xC8 * gp->u.last.xDC);
     if (gp->u.last.xE0 != NULL && gp->u.last.xE0->appsrt != NULL) {

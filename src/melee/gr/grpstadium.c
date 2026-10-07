@@ -1,4 +1,7 @@
 #include "grpstadium.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <sysdolphin/baselib/forward.h>
 
@@ -830,6 +833,49 @@ void grStadium_801D2278(Ground_GObj* gobj)
     grStadium_801D2528(gobj, 0, 0);
 }
 
+#ifdef PORT
+// PORT: Slippi's PSCameraIndependentMonitor.asm (Common, at
+// grStadium_801D2344+0x1B8) replaces the call to grStadium_801D32D0() in
+// case 9 below with a call plus its own decision. grStadium_801D32D0()
+// decides whether to drop the zoomed-in monitor view by projecting the
+// fighter through the live camera, so its answer depends on the aspect
+// ratio, and the screen transition draws from the RNG. Slippi keeps the
+// call, which also positions the monitor image (wrapper->x1A and ->x1C),
+// and decides by fixed world-space bounds instead: the stage's camera
+// limits pulled in by a constant, which two machines agree on.
+static bool port_ps_monitor_keep(Ground_GObj* gobj)
+{
+    Ground* gp = GET_GROUND(gobj);
+    HSD_GObj* player_gobj;
+    Fighter* fp;
+
+    if (!port_hook_stadium_monitor_fixed_bounds()) {
+        return grStadium_801D32D0(gobj);
+    }
+    // Called for the side effect; the return value is deliberately dropped.
+    grStadium_801D32D0(gobj);
+
+    player_gobj = Player_GetEntity(gp->u.display.xEE);
+    if (player_gobj == NULL) {
+        return false;
+    }
+    fp = player_gobj->user_data;
+    if (fp == NULL) {
+        return false;
+    }
+    // "the camera limits for the stage minus a fixed amount": left -170 + 50,
+    // right 170 - 50, top 120 - 40, bottom -60 + 40. Written out as literals
+    // in the .asm's data block, so they are literals here.
+    if (fp->cur_pos.x < -120.0f || fp->cur_pos.x > 120.0f) {
+        return false;
+    }
+    if (fp->cur_pos.y > 80.0f || fp->cur_pos.y < -20.0f) {
+        return false;
+    }
+    return true;
+}
+
+#endif
 void grStadium_801D2344(Ground_GObj* g)
 {
     Ground_GObj* gobj = g;
@@ -899,7 +945,12 @@ void grStadium_801D2344(Ground_GObj* g)
         temp_r3_8->flag = 0;
         if (gp->u.display.xDC == NULL ||
             Player_GetEntity(gp->u.display.xEE) == NULL ||
+#ifdef PORT
+            Player_8003219C(gp->u.display.xEE) ||
+            !port_ps_monitor_keep(gobj))
+#else
             Player_8003219C(gp->u.display.xEE) || !grStadium_801D32D0(gobj))
+#endif
         {
             grStadium_801D2A60(gobj);
         }
@@ -1185,7 +1236,14 @@ HSD_GObj* grStadium_801D2BEC(void)
     gobj->gxlink_prios = 2;
     text = HSD_MemAlloc(sizeof(*text));
     GObj_InitUserData(gobj, 3, HSD_Free, text);
+#ifdef PORT
+    // PORT: 0x18 is sizeof(HSD_ImageDesc) on PowerPC: the clear covers
+    // text->desc and stops before the two HSD_Text pointers after it. An
+    // image descriptor is 0x20 here.
+    memzero(text, sizeof(text->desc));
+#else
     memzero(text, 0x18);
+#endif
     lb_800121FC(&text->desc, 0xFA, 0xA0, 4, 0x7D2);
     archive = grDatFiles_GetArchive();
     HSD_SisLib_803A611C(1, gobj, 9, 0xD, 0, 1, 0, 1);
@@ -1194,6 +1252,10 @@ HSD_GObj* grStadium_801D2BEC(void)
     text->win_static_p =
         HSD_SisLib_803A5ACC(1, 0, 0.0F, 0.0F, 0.0F, 250.0F, 160.0F);
     text->win_dynamic_p = HSD_SisLib_803A6754(1, 0);
+#ifdef PORT
+    // PORT: Slippi's ChangeJumbotronText.asm (+0x14C).
+    port_hook_stadium_jumbotron_texts_made();
+#endif
     text->win_dynamic_p->pos_z = 0.0F;
     hsd_text = text->win_dynamic_p;
     hsd_text->box_size_x = 250.0F;
@@ -1208,7 +1270,11 @@ HSD_GObj* grStadium_801D2D78(void)
 
     temp_r3 = GObj_Create(0x11, 0x12, 0);
     GObj_SetupGXLinkMax(temp_r3, grStadium_801D2FD0, 3);
+#if defined(PORT) || defined(LINT)
+    wrapper = HSD_MemAlloc(sizeof(*wrapper));
+#else
     wrapper = HSD_MemAlloc(0x1C);
+#endif
     GObj_InitUserData(temp_r3, 3, HSD_Free, wrapper);
     memzero(&wrapper->desc, sizeof(wrapper->desc));
     lb_800121FC(&wrapper->desc, 0x280, 0x196, 4, 0x7D3);
@@ -1879,6 +1945,15 @@ char* datfiles[] = {
     "GrPs4.dat",
 };
 
+#ifdef PORT
+// PORT: the stadium_transform_ready hook. -1 means no mod has an opinion,
+// and the console's own test decides.
+static bool port_stadium_ready(void)
+{
+    int ready = port_hook_stadium_transform_ready(-1);
+    return ready >= 0 ? ready != 0 : grStadium_801D42B8();
+}
+#endif
 static inline void startLoad(int i)
 {
     HSD_GObj* map_gobj;
@@ -1889,13 +1964,26 @@ static inline void startLoad(int i)
     gp = grStadium_801D4354(map_gobj);
     HSD_ASSERT(0x99B, gp);
     gp->u.stadium.xC4_b1 = true;
+#ifdef PORT
+    // PORT: the stadium_transform_load hook: a mod may load the file
+    // itself. The Slippi mod's StadiumFileLoad (Online/Core/Hacks/Stadium),
+    // injected in lbFile_80016580(), whose only console caller is this line,
+    // reads it synchronously and sets its archive up now, with no callback.
+    if (!port_hook_stadium_transform_load(gp, datfiles[i]))
+#endif
     lbFile_80016580(datfiles[i], gp->u.stadium.xCC, &gp->u.stadium.xC8,
                     fn_801D4220, 0);
 }
 
 static inline void waitLoad(Ground* gp)
 {
+#ifdef PORT
+    // PORT: the stadium_transform_ready hook, through port_stadium_ready()
+    // above; the Slippi mod's GrPsxIsValid replaces this call (+0x218).
+    if (port_stadium_ready()) {
+#else
     if (grStadium_801D42B8()) {
+#endif
         gp->u.stadium.xDC = 2;
     }
 }
@@ -1988,7 +2076,25 @@ void grStadium_801D435C(Ground_GObj* arg0)
     }
 }
 
+#ifdef PORT
+// PORT: the stadium_state_checked hook reports the transformation state
+// where Slippi's SendStadiumInfo reads it: at this function's epilogue,
+// after whichever of its returns ran. A wrapper is there without touching
+// each return. --trace-stadium and the .slp recorder read it.
+static void grStadium_801D4548_body(Ground_GObj* gobj);
+
 void grStadium_801D4548(Ground_GObj* gobj)
+{
+    Ground* gp = GET_GROUND(gobj);
+
+    grStadium_801D4548_body(gobj);
+    port_hook_stadium_state_checked(gp->u.stadium.xDC, gp->u.stadium.xDE);
+}
+
+static void grStadium_801D4548_body(Ground_GObj* gobj)
+#else
+void grStadium_801D4548(Ground_GObj* gobj)
+#endif
 {
     Ground* gp;
     Ground_GObj* new_gobj;
@@ -2016,7 +2122,14 @@ void grStadium_801D4548(Ground_GObj* gobj)
 
     gp = GET_GROUND(gobj);
     scale = Ground_801C0498();
+#ifdef PORT
+    // PORT: Slippi Online's frozen-stadium toggle is "treat it as training
+    // mode": its IngameCheckIfFrozen.asm replaces this call's answer with
+    // the toggle. The same here, from --frozen-stadium.
+    if (gm_8018841C() || port_hook_stadium_frozen()) {
+#else
     if (gm_8018841C()) {
+#endif
         return;
     }
 

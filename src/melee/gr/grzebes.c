@@ -1131,11 +1131,25 @@ static inline void grZebes_801DA254_inline2(HSD_LObj* lobj, GXColor* color)
     HSD_LObjSetColor(lobj, *color);
 }
 
+#ifdef PORT
+// PORT: the acid's light, kept at console gp+DC. grZebes_801D9798() zeroes
+// it as `u.zebes5.xDC` on the same gobj, one word with `u.zebes4.xDC` on the
+// console. `u.zebes4` is a grZe_AcidState overlay whose pointer members are
+// moved out to the console's offsets under PORT, so here `u.zebes4.xDC` is
+// native +32 and `u.zebes5.xDC` native +24. This gobj (grZe_callbacks entry
+// 8) has no AcidState, so the light is read where it is written; through
+// zebes4 the first read is uninitialised heap, not the NULL that makes this
+// function find the light.
+#define ZEBES_ACID_LOBJ(gp) ((gp)->u.zebes5.xDC)
+#else
+#define ZEBES_ACID_LOBJ(gp) ((gp)->u.zebes4.xDC)
+#endif
+
 void grZebes_801DA254(Ground_GObj* gobj, f32 level)
 {
     Ground* gp = GET_GROUND(gobj);
-    HSD_LObj* lobj = (HSD_LObj*) gp->u.zebes4.xDC;
-    gp->u.zebes4.xDC = (u32) lobj;
+    HSD_LObj* lobj = (HSD_LObj*) ZEBES_ACID_LOBJ(gp);
+    ZEBES_ACID_LOBJ(gp) = (u32) lobj;
     if (lobj == NULL) {
         HSD_GObj* lgobj = HSD_GObjGXLinkHead[4];
         if (lgobj != NULL) {
@@ -1147,7 +1161,7 @@ void grZebes_801DA254(Ground_GObj* gobj, f32 level)
                 lobj = HSD_LObjGetNext(lobj);
             }
         }
-        gp->u.zebes4.xDC = (u32) lobj;
+        ZEBES_ACID_LOBJ(gp) = (u32) lobj;
     }
 
     if (lobj != NULL) {
@@ -1391,11 +1405,25 @@ s32 grZebes_801DAA08(void)
             HSD_JObjAddChild(parent_child, (&grZe_8049F170[selected])->x04);
 
             {
+#ifdef PORT
+                // PORT: the same three fields, by name. `unk8` is an array of
+                // UnkStageDat_x8_t, 0x34 bytes on PowerPC, so 0x6C, 0x70 and
+                // 0x74 are element 2 at +0x04, +0x08 and +0x0C: its anims,
+                // matanims and shapeanims. Here the struct holds pointers and
+                // is wider, so the offsets land inside element 1, and
+                // grZebes_801DAA08() dereferences what it finds there.
+                struct UnkStageDat_x8_t* dat =
+                    grDatFiles_801C6330(2)->unk4->unk8;
+                HSD_ShapeAnimJoint** sap = dat[2].shapeanims;
+                HSD_AnimJoint** ajp = dat[2].anims;
+                HSD_MatAnimJoint** mjp = dat[2].matanims;
+#else
                 u8* dat = (0, (u8*) grDatFiles_801C6330(2)->unk4->unk8);
                 HSD_ShapeAnimJoint** sap =
                     *(HSD_ShapeAnimJoint***) (dat + 0x74);
                 HSD_AnimJoint** ajp = *(HSD_AnimJoint***) (dat + 0x6C);
                 HSD_MatAnimJoint** mjp = *(HSD_MatAnimJoint***) (dat + 0x70);
+#endif
                 HSD_ShapeAnimJoint* sa;
                 HSD_MatAnimJoint* ma;
                 HSD_AnimJoint* aj;
@@ -2335,7 +2363,13 @@ bool grZebes_801DCBFC(Ground_GObj* gobj, HSD_GObj* fobj, void* arg)
     ftLib_GetPrevPos(fobj, &prev);
     prev.y += intercept;
     if (pos.y < slope) {
+#ifdef PORT
+        // PORT: HSD_GObj.user_data is +0x2C on the console and further in
+        // here; the field the cast lands on there is the acid's hit.
+        *(void**) arg = yakumono_param->x2C;
+#else
         *(void**) arg = ((HSD_GObj*) yakumono_param)->user_data;
+#endif
         if (prev.y > slope) {
             Ground_801C43A4(&pos);
             Ground_801C53EC(0x61A82);

@@ -27,6 +27,9 @@
 #include <sysdolphin/baselib/jobj.h>
 #include <sysdolphin/baselib/psstructs.h>
 #include <sysdolphin/baselib/random.h>
+#ifdef PORT
+#include <melee/it/types.h> // Item, for grKinokoRoute_802084B4
+#endif
 
 static struct yakumono_param_t {
     int x0;
@@ -575,7 +578,19 @@ void grKinokoRoute_802084B4(HSD_GObj* gobj)
 {
     HSD_GObj* gobj2;
     Vec3 sp_vec;
+#ifdef PORT
+    // PORT: gobj is the hazard item (ityaku.c's yaku.x18 callback), and
+    // 0xDD8 is its xDD4_itemVar.yaku.x4_u.x4 only on the console. Item is
+    // laid out differently here, so the pad view reads another field, NULL,
+    // and lb_8000B1CC(NULL, NULL, ...) faults. The field, by name.
+    struct {
+        HSD_JObj* jobj;
+    } gp_named, *gp = &gp_named;
+
+    gp_named.jobj = ((Item*) gobj->user_data)->xDD4_itemVar.yaku.x4_u.x4;
+#else
     struct grKinokoRoute_802084B4_gp* gp = gobj->user_data;
+#endif
 
     HSD_JObjSetFlagsAll(gp->jobj, JOBJ_HIDDEN);
 

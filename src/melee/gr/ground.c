@@ -1,4 +1,7 @@
 #include "ground.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <Runtime/platform.h>
 
@@ -305,6 +308,18 @@ static Ground* alloc_user_data_ground(void)
     if (gp == NULL) {
         OSReport("%s:%d: couldn t get user data(Ground)\n", __FILE__, 474);
     }
+#ifdef PORT
+    // PORT: cleared. The console hands back the heap's leftovers (the @bug
+    // at Ground_GetStageGObj()), which the port cannot reproduce anyway, and
+    // Slippi's recorder clears the block in every match it records. Here the
+    // leftovers are also a hazard the console does not have: a stage clears
+    // or fills a pointer slot through a u32 arm of Ground.u and reads it
+    // back through a pointer arm, and the half the u32 does not cover keeps
+    // a reused block's bytes, which a later stage reads as a gobj.
+    if (gp != NULL) {
+        memzero(gp, sizeof(*gp));
+    }
+#endif
     return gp;
 }
 
@@ -852,6 +867,14 @@ Ground_GObj* Ground_GetStageGObj(int map_id)
      * @c on_init writes it sees stale heap contents.
      */
     gp = alloc_user_data_ground();
+#ifdef PORT
+    // PORT: Slippi's required "Common/Initialize Stage Data" code is
+    // injected at Ground_GetStageGObj+0x7C, right after this allocation
+    // returns, and nowhere else, so the Ground that Ground_801C1A20()
+    // allocates is left alone as the console leaves it. It clears 516 bytes
+    // there; this hook clears sizeof(Ground).
+    port_hook_sim_object_allocated(gp, sizeof(Ground));
+#endif
     if (gp == NULL) {
         HSD_GObjFree(gobj);
         return NULL;
@@ -1408,8 +1431,19 @@ static bool Ground_801C24F8(StKind stkind, u32 arg1, s32* arg2)
                     }
                     break;
                 case 6:
+#ifdef PORT
+                    // PORT: the stage_alt_music_chance hook, for
+                    // UnclePunch's Random Stage Music, `04
+                    // Ground_801C24F8+0x1B8 <- li r0, 50`: this branch's
+                    // chance is 50 of 100. Inert unless --slippi-general.
+                    if (gm_80164ABC() &&
+                        (port_hook_stage_alt_music_chance(phi_r30->x16) >
+                             HSD_Randi(RANDI_MAX) ||
+                         temp_r25))
+#else
                     if (gm_80164ABC() &&
                         (phi_r30->x16 > HSD_Randi(RANDI_MAX) || temp_r25))
+#endif
                     {
                         arg1 |= 2;
                     } else {

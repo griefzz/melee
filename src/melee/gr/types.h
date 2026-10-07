@@ -140,6 +140,31 @@ typedef struct StageCallbacks {
     /*  +4 */ HSD_GObjPredicate callback1;
     /*  +8 */ HSD_GObjEvent gobj_proc;
     /*  +C */ void (*callback3)(Ground_GObj*);
+#if defined(PORT) || defined(LINT)
+    // PORT: reversed for a little-endian host, over the word rather than its
+    // first byte. The stage tables write the numeric arm: grizumi.c's table
+    // gives 0xC0000000, which on the console is flags_b0 | flags_b1, as a u8
+    // run occupies byte zero of the word, the top byte of a big-endian word,
+    // and MWCC fills it from the most significant bit down. Here byte zero is
+    // the bottom byte and clang fills from the bottom bit up. Declared over
+    // the u32 in reverse, with the unused bits spelled out, each flag lands on
+    // the bit its constant names. Without it Ground_801C466C(), which tests
+    // flags_b0 for the stage's own lights, falls through to the default set.
+    /* +10 */ union StageCallbacks_x10 {
+        /* +10 */ u32 flags;
+        struct StageCallbacks_x10_x0 {
+            u32 port_pad0 : 24;
+            u32 flags_b7 : 1;
+            u32 flags_b6 : 1;
+            u32 flags_b5 : 1;
+            u32 flags_b4 : 1;
+            u32 flags_b3 : 1;
+            u32 flags_b2 : 1;
+            u32 flags_b1 : 1;
+            u32 flags_b0 : 1;
+        } x0;
+    } x10;
+#else
     /* +10 */ union StageCallbacks_x10 {
         /* +10 */ u32 flags;
         struct StageCallbacks_x10_x0 {
@@ -153,6 +178,7 @@ typedef struct StageCallbacks {
             /* +10:7 */ u8 flags_b7 : 1;
         } x0;
     } x10;
+#endif
 } StageCallbacks;
 
 struct GrJoint { ///< @todo rename fields
@@ -586,8 +612,42 @@ struct grVenom_GroundVars2 {
             u8 b7 : 1;
         } x0;
     } xE0_state;
+#if defined(PORT) || defined(LINT)
+    /* +1E */ u8 pad_1E[2];
+    /// PORT: the environment-frame counter this gobj keeps. grvenom.c
+    /// reaches it as `u.venom.x20.xE4`: console offset +0x20 in an arm of six
+    /// 4-byte words, native offset 36 in this arm of seven pointers, inside
+    /// the fifth joint pointer, which lb_8000B1CC() then dereferences. Named
+    /// here so the two stop sharing a word; the pad keeps the console
+    /// offset.
+    /* +20 gp+E4 */ f32 xE4;
+#endif
 };
 
+#ifdef PORT
+// PORT: one of four arms Peach's Castle reads its satellites through:
+// arwing, castle5, castle7 and castle11 all address the same Ground
+// (grcastle.c goes castle11 -> icemt -> arwing on one gp, and
+// grCastle_801CF308() reads castle7.xD0 and castle11.xD8 on another).
+// castle7 declares gp+D0 as a pointer, which lands it at native +16 and what
+// follows at +24/+28, where the u32 arms keep the console's +12/+16/+20, so
+// castle11's xD4/xD8 would land on the halves of castle7's gobj pointer.
+// Each arm puts gp+D0, gp+D4 and gp+D8 at castle7's native offsets, and a
+// field that holds a pointer another arm reads as one is pointer-wide, as a
+// u32 write leaves the pointer arm's high half unwritten. See
+// docs/design/verification.md, "Union arms".
+struct grArwing_GroundVars {
+    u32 xC4;
+    u32 xC8;
+    /* gp+CC */ uintptr_t xCC; // cleared here, read as castle5's gobj
+    /* gp+D0 */ uintptr_t xD0; // castle7.xD0's gobj
+    /* gp+D4 */ s32 xD4;
+    /* gp+D8 */ s32 xD8;
+    /* gp+DC */ f32 xDC;
+    Vec3 xE0;
+    f32 xEC;
+};
+#else
 struct grArwing_GroundVars {
     u32 xC4;
     u32 xC8;
@@ -599,6 +659,7 @@ struct grArwing_GroundVars {
     Vec3 xE0;
     f32 xEC;
 };
+#endif
 
 struct grGreatBay_GroundVars {
     u8 xC4;
@@ -713,6 +774,19 @@ struct grIceMt_GObj1_GroundVars {
     /* +2C   gp+F0   */ HSD_JObj* x2C;
     /* +30   gp+F4   */ HSD_JObj* x30;
     /* +34   gp+F8   */ HSD_GObj* x34[20];
+#if defined(PORT) || defined(LINT)
+    // PORT: the moving-platform gobjs keep 7-entry s16 records after the
+    // material gobjs in x34, reached at gp+0x100, gp+0x108 and gp+0x10E
+    // through five spellings in the icemt and icemt1 arms. On PowerPC they
+    // land past every element of x34 those gobjs use; here the HSD_JObj*
+    // above double in width and gp+0x100 falls inside x34, over the joint
+    // published as spawn point 0. Named as their own field, at the end.
+    // grIceMt_801F91EC() fills a record and grIceMt_801F929C() steps it:
+    // [0] live, [1] frame counter, [2] and [3] animation ids, [4] the joint
+    // mpJointSetCb1() watches, [5] the frame it leaves the collision list,
+    // [6] the frame it rejoins. Gobj 2 uses both records, gobj 4 rail[0].
+    s16 rail[2][7];
+#endif
 };
 
 struct grIceMt_BG_GroundVars {
@@ -837,6 +911,13 @@ struct grInishie2_GroundVars {
         u8 b7 : 1;
     } xC4_flags;
     s16 xC6;
+#ifdef PORT
+    // PORT: the same four bytes as grInishie2_GroundVars3's. The POW block
+    // that arm is for also writes xCA and xD8 through this one
+    // (grInishie2_801FD824()), so both move clear of inishie22.xC4's pointer
+    // together, or they stop agreeing with each other.
+    u8 port_pad_xC6[4];
+#endif
     s16 xC8;
     s16 xCA;
     s16 xCC;
@@ -888,6 +969,14 @@ struct grInishie2_GroundVars2 {
 struct grInishie2_GroundVars3 {
     s16 xC4;
     s16 xC6;
+#ifdef PORT
+    // PORT: the same object's xC4 is also `inishie22.xC4`, a gobj pointer
+    // (grInishie2_801FD7A8() writes it, grInishie2_801FDED8_inline() reads
+    // it), and here the flags below sit in its high half, so setting b0
+    // corrupts the pointer. Four bytes keep everything after it clear of the
+    // pointer, as on the console.
+    u8 port_pad_xC4[4];
+#endif
     struct grInishie2_GroundVars3_xC8_flags {
         u8 b0 : 1;
         u8 b1 : 1;
@@ -991,6 +1080,35 @@ struct grZebes_GroundVars3 {
     /*  +4 gp+C8 */ s32 xC8;
 };
 
+#ifdef PORT
+// PORT: this arm is a grZe_AcidState (grzebes.c) plus two fields after it:
+// grZebes_801D9100() fills the storage through the names below and hands
+// `&gp->u.zebes4` to grZebes_801DA528(), which reads it through that
+// struct. The struct holds three pointers, so it is 0x38 bytes here against
+// the console's 0x24, and the three fields that hold addresses move with
+// it: `xD8` is `x14_jobj1`, `xDC` `x18_jobj2`, `xE0` `x1C_mat`. At the
+// console's offsets `st->x1C_mat` reads NULL and grMaterial_801C8E08()
+// writes through it. They are uintptr_t because the call sites store
+// `(u32) jobj` into them and the struct reads eight bytes back.
+struct grZebes_GroundVars4 {
+    /* +00 gp+C4 */ u8 xC4;
+    /* +01 gp+C5 */ u8 xC5;
+    /* +02 gp+C6 */ u16 xC6;
+    /* +04 gp+C8 */ f32 xC8;
+    /* +08 gp+CC */ f32 xCC;
+    /* +0C gp+D0 */ f32 xD0;
+    /* +10 gp+D4 */ f32 xD4;
+    /* native +18 */ uintptr_t xD8;
+    /* native +20 */ uintptr_t xDC;
+    /* native +28 */ uintptr_t xE0;
+    /* native +30 */ s16 xE4;
+    /* native +32 */ s16 xE6;
+    /* pad to the end of grZe_AcidState, which is 0x38 here */
+    u8 pad_acid[4];
+    /* native +38 */ s32 xE8;
+    /* native +3C */ u32 xEC;
+};
+#else
 struct grZebes_GroundVars4 {
     /* +00 gp+C4 */ u8 xC4;
     /* +01 gp+C5 */ u8 xC5;
@@ -1007,6 +1125,7 @@ struct grZebes_GroundVars4 {
     /* +24 gp+E8 */ s32 xE8;
     /* +28 gp+EC */ u32 xEC;
 };
+#endif
 
 struct grZebes_GroundVars5 {
     /* +00 gp+C4 */ s16 xC4;
@@ -1017,10 +1136,24 @@ struct grZebes_GroundVars5 {
     /* +10 gp+D4 */ f32 xD4;
     /* +14 gp+D8 */ f32 xD8;
     /* +18 gp+DC */ u32 xDC;
+#ifdef PORT
+    // PORT: grZebes_801D8644() casts `&xC8` to grZe_AcidState* and writes
+    // eleven fields through it. That struct holds three pointers, so its
+    // tail reaches +0x38 from `xC8` here where the console puts it at +0x24,
+    // and the four fields this replaces are exactly that tail (`x14_jobj1`,
+    // `x18_jobj2`, `x1C_mat`, `x20_anim_idx`), none of them ever named.
+    // Without the wider reserve the acid writes over `xF0`, the rising
+    // column's gobj, which grZebes_801D881C() asks for a joint. `xDC` stays:
+    // here it lands in the alignment hole the AcidState leaves between
+    // `x10_damage` and `x14_jobj1`, so grZebes_801D9798()'s zeroing of it is
+    // harmless. Everything from `xEC` on is at native +0x3C.
+    /* PORT */ u8 pad_acid[0x3C - 0x1C];
+#else
     /* +1C gp+E0 */ u32 xE0;
     /* +20 gp+E4 */ u32 xE4;
     /* +24 gp+E8 */ s16 xE8;
     /* +26 gp+EA */ s16 xEA;
+#endif
     /* +28 gp+EC */ u32 xEC;
     /* +2C gp+F0 */ u32 xF0;
     /* +30 gp+F4 */ s16 xF4;
@@ -1352,7 +1485,18 @@ struct grBigBlue_ManagerVars {
 ASSERT_SIZE(struct grBigBlue_ManagerVars, 0x11C);
 
 struct grBigBlue_PlatformVars {
+#if defined(PORT) || defined(LINT)
+    // PORT: the platform's state byte. Nothing reads it as a word:
+    // grBigBlue_801EA05C() reads it as x0_s.x0_u.x0_s.x0 and
+    // grBigBlue_801E9F3C() clears it. Declared u32, gp+C4 is the word's top
+    // byte on the console and its bottom byte here, so a small value written
+    // by this name lands in gp+C7 there and gp+C4 here, and the two disagree
+    // about the byte every reader takes.
+    /* gp+C4 */ u8 xC4;
+    /* gp+C5 */ u8 pad_C5[3];
+#else
     /* gp+C4 */ u32 xC4;
+#endif
     /* gp+C8 */ s32 xC8_timer;
     /* gp+CC */ s32 xCC_timer;
     /* gp+D0 */ s32 xD0_timer;
@@ -1363,6 +1507,25 @@ struct grBigBlue_PlatformVars {
     /* gp+EC */ f32 xEC;
 };
 
+#if defined(PORT) || defined(LINT)
+/// The Falcon Flyer (gobj ID 35): grBigBlue_801E8D64 and grBigBlue_801E93D8.
+///
+/// PORT: the decomp reaches these through `u8* bp` at the console's byte
+/// offsets (`bp[0xC4]`, `*(f32*) (bp + 0xD0)`), which are Ground.u + n there
+/// and Ground.color_overlay here, where Ground.u is at 0x100. It is not
+/// #grBigBlue_PlatformVars: the flyer keeps floats at gp+CC and gp+D0 where
+/// the relay platform keeps timers. All scalars, so every field is at its
+/// console offset on both targets.
+struct grBigBlue_FlyerVars {
+    /* gp+C4 */ u8 state;
+    /* gp+C5 */ u8 pad_C5[3];
+    /* gp+C8 */ s32 timer;
+    /* gp+CC */ f32 rotation_z;
+    /* gp+D0 */ f32 target_y;
+    /* gp+D4 */ u8 pad_D4[4];
+    /* gp+D8 */ f32 velocity_x;
+};
+#endif
 /// Moving road gobj state (gobj ID 34).
 struct grBigBlue_RoadVars {
     /* gp+C4 */ u32 flags;
@@ -1392,6 +1555,27 @@ ASSERT_SIZE(struct grBigBlue_RoadVars, 0x38);
 struct grBigBlue_CarLane {
     union grBigBlue_CarLane_x0 {
         /* +00 gp+D4 */ u16 status;
+#ifdef PORT
+        // PORT: reversed for a little-endian host. MWCC fills a bitfield run
+        // from the most significant bit of its storage unit down and clang
+        // from the least significant up, so the console's `state` at bits
+        // 7..2 of byte 0 is the last member of the run here. grbigblue.c also
+        // reads this byte raw about forty times (`>> 2 & 0x3F` for the state,
+        // `>> 1 & 1` for the direction), and those agree with the reversed
+        // declaration as the reads and writes by name do.
+        struct grBigBlue_CarLane_x0_x0 {
+            /* +00 gp+D4:0 */ u8 state_hi : 1;
+            /* +00 gp+D4:1 */ u8 direction : 1;
+            /* +00 gp+D4:2 */ u8 state : 6;
+            /* +01 gp+D5   */ u8 x1;
+        } x0;
+        // PORT: `collision_slot` has no reversed spelling: its console
+        // placement crosses the byte boundary, bits 8..4 of the halfword being
+        // `state_hi` (byte 0's low bit) followed by the top nibble of byte 1.
+        // Big-endian order puts those next to each other and little-endian
+        // does not, so no single bitfield can name them here. Its sites go
+        // through BB_LANE_SLOT in grbigblue.c.
+#else
         struct grBigBlue_CarLane_x0_x0 {
             /* +00 gp+D4 */ u8 state : 6;
             /* +00 gp+D4 */ u8 direction : 1;
@@ -1403,6 +1587,7 @@ struct grBigBlue_CarLane {
             /* +00 gp+D4 */ u16 collision_slot : 5;
             /* +00 gp+D4 */ u16 pad_slot_1 : 4;
         } x0_1;
+#endif
     } x0;
     /* +02 gp+D6 */ s8 x2;
     /* +03 gp+D7 */ u8 x3;
@@ -1463,11 +1648,24 @@ struct grBigBlue_GroundVars {
             /*  +8 gp+CC */ void* xCC;
             /*  +C gp+D0 */ f32 xD0;
             /* +10 gp+D4 */ HSD_JObj* xD4[3];
+#ifdef PORT
+            // PORT: gp+E0 is manager.event_extra, a pointer, which
+            // grBigBlue_801E8978() writes on this same object. Four bytes
+            // here put data[] at native 60 against manager.data's 64, so an
+            // event that carries a joint writes the pointer's high half over
+            // data[0]'s index, x1 and x2: platform car 0's state and
+            // direction. Pointer-wide, data[] lands where manager's does.
+            /* pad */ char pad_3[sizeof(void*)];
+#else
             /* pad */ char pad_3[4];
+#endif
             /* +20 gp+E4 */ struct grBigBlue_GroundData data[3];
         } x0_s;
         struct grBigBlue_ManagerVars manager;
         struct grBigBlue_PlatformVars platform;
+#if defined(PORT) || defined(LINT)
+        struct grBigBlue_FlyerVars flyer;
+#endif
         struct grBigBlue_RoadVars road;
         struct grBigBlue_CarVars car;
     } x0_u;
@@ -1586,10 +1784,20 @@ struct grCastle_GroundVars11 {
     /* +01 gp+C5 */ u8 pad_01[3];
     /* +04 gp+C8 */ s16 xC8;
     /* +06 gp+CA */ s16 xCA;
+#ifdef PORT
+    // PORT: see grArwing_GroundVars: gp+D0, gp+D4 and gp+D8 at castle7's
+    // native 16, 24 and 28, and xCC and xD0 pointer-wide because castle5.xCC
+    // and castle7.xD0 read them as the gobjs they hold.
+    /* +08 gp+CC */ uintptr_t xCC;
+    /* +0C gp+D0 */ uintptr_t xD0;
+    /* +10 gp+D4 */ u32 xD4;
+    /* +14 gp+D8 */ u32 xD8;
+#else
     /* +08 gp+CC */ u32 xCC;
     /* +0C gp+D0 */ u32 xD0;
     /* +10 gp+D4 */ u32 xD4;
     /* +14 gp+D8 */ u32 xD8;
+#endif
 };
 
 struct grPura_GroundVars {
@@ -1701,7 +1909,11 @@ struct grHomeRun_GroundVars {
     /* +04 gp+C8 */ HSD_GObj** back;
     /* +08 gp+CC */ HSD_Text* xCC;
     /* +0C gp+D0 */ HSD_JObj* xD0;
+#if defined(PORT) || defined(LINT)
+    /* +10 gp+D4 */ HSD_GObj* text_gobj;
+#else
     /* +10 gp+D4 */ HSD_GObj* xD4;
+#endif
     /* +14 gp+D8 */ HSD_GObj* bg_gobj[4];
     /* +24 gp+E8 */ struct grHomeRun_GroundVars_xE8_flags {
         u8 b0 : 1;
@@ -1719,8 +1931,15 @@ struct grHomeRun_GroundVars {
 struct grHomeRun_GroundVars2 {
     /* +00 gp+C4 */ u16 xC4;
     /* +02 gp+C6 */ u16 xC6;
+#if defined(PORT) || defined(LINT)
+    /// #grHomeRun_8021EC58 returns this and #HSD_SisLib_803A5CC4 frees it.
+    /* +04 gp+C8 */ HSD_Text* xC8;
+    /// #Ground_801C3FA4 returns this and #lb_8000B1CC reads its position.
+    /* +08 gp+CC */ HSD_JObj* xCC;
+#else
     /* +04 gp+C8 */ int xC8;
     /* +08 gp+CC */ int xCC;
+#endif
     /* +0C gp+D0 */ float xD0;
 };
 
@@ -2024,10 +2243,23 @@ struct UnkStageDat_x8_t {
     /* +30 */ int x30;
 };
 
+#ifdef PORT
+// PORT: one bit that comes out of converted stage data, so it has to be on
+// the bit the console put it on: MWCC fills a run from the top of the
+// storage byte down, clang from the bottom up. Seven bits of padding first
+// put `flag` back at 0x80. See docs/design/verification.md, "Bitfield
+// order".
+struct GroundShadowEntry {
+    HSD_LightAnim* unk0;
+    u8 port_pad : 7;
+    u8 flag : 1;
+};
+#else
 struct GroundShadowEntry {
     HSD_LightAnim* unk0;
     u8 flag : 1;
 };
+#endif
 
 struct GroundJointPair {
     /* +0 */ s16 joint_index;

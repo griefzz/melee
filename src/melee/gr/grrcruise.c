@@ -124,7 +124,16 @@ void grRCruise_801FF168(void)
     HSD_JObjSetFlagsAll(jobj, JOBJ_HIDDEN);
     grgobj = grRCruise_801FF2C8(3);
     gp2 = GET_GROUND(grgobj);
+#ifdef PORT
+    // PORT: `u.rcruise2.xEC` and `u.scroll.anim_gobj` are the same console
+    // offset (gp+EC) and not the same native one, because two DynamicsDesc
+    // above xEC each grow a word. grRCruise_801FFADC(), the only reader,
+    // reads it as `u.scroll.anim_gobj`, so it is written there. See
+    // docs/design/verification.md, "Union arms".
+    gp2->u.scroll.anim_gobj = jgobj;
+#else
     gp2->u.rcruise2.xEC = jgobj;
+#endif
     grRCruise_801FF2C8(0);
     grRCruise_801FF2C8(2);
     grRCruise_801FF2C8(5);
@@ -234,8 +243,21 @@ void grRCruise_801FF5B4(Ground_GObj* gobj)
     Ground_InitMapColl(jobj, gp->map_id);
     grAnime_801C8138(gobj, gp->map_id, 0);
     gp->u.rcruise.x10 = 1;
+#ifdef PORT
+    // PORT: two faults in one line. `Map_Chikuwa` is `char[0x198]`, 17 * 24
+    // bytes: seventeen console-sized grRCruise_Entry, the array
+    // grRCruise_80200B48() writes. The entry ends in an HSD_JObj*, so it is
+    // 32 bytes here. And `u.map.chikuwa` and `u.rcruise.entries` are the same
+    // console offset (+0x6C) but not the same native one, because the arms
+    // above them widen by different amounts; every read is through
+    // `entries`. 17 is ARRAY_SIZE(grRc_803E4FF0), declared below.
+    gp->u.rcruise.entries =
+        HSD_MemAlloc(17 * sizeof(*gp->u.rcruise.entries));
+    HSD_ASSERT(410, gp->u.rcruise.entries);
+#else
     gp->u.map.chikuwa = HSD_MemAlloc(sizeof(*gp->u.map.chikuwa));
     HSD_ASSERT(410, gp->u.map.chikuwa);
+#endif
     grRCruise_80201410(gobj);
     Ground_801C10B8(gobj, grRCruise_801FF444);
     grRCruise_80200540(gobj);
@@ -1032,7 +1054,16 @@ void grRCruise_80201410(Ground_GObj* gobj)
     Ground* gp = GET_GROUND(gobj);
     int i;
 
+#ifdef PORT
+    // PORT: sizeof(lbl_803E5014) is twenty Map_VanishDesc of 8 bytes, and
+    // the destination is Map_VanishEntry, whose third member is an
+    // HSD_JObj*, so 16 bytes here. The loop below writes twenty of them.
+    // Sized by the type written, not by the table that seeds it.
+    gp->u.map.vanish =
+        HSD_MemAlloc(ARRAY_SIZE(lbl_803E5014) * sizeof(*gp->u.map.vanish));
+#else
     gp->u.map.vanish = HSD_MemAlloc(sizeof(lbl_803E5014));
+#endif
     HSD_ASSERT(1453, gp->u.map.vanish);
 
     for (i = 0; i < ARRAY_SIZE(lbl_803E5014); i++) {

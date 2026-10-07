@@ -1691,11 +1691,27 @@ void grCastle_801D0520(Ground_GObj* gobj, intptr_t renderpass)
     }
 }
 
+#ifdef PORT
+// PORT: unkCastle is the stage's own Ground: grCastle_801CFBD4() hands gp
+// to grMaterial_801C8CFC(), and the item gives it back to these callbacks.
+// Its x10C and x134 are castle10's x10C and state at their console offsets
+// (gp+0x10C, gp+0x134); Ground.u starts later here, so the fields are named.
+// Through the overlay, a hit switch destroys a "gobj" made of padding and
+// half of jobjs[0], and writes its flag into jobjs[4].
+#define CASTLE_ITEM(arg, i) (((Ground*) (arg))->u.castle10.x10C[i])
+#define CASTLE_HIT(arg, i) (((Ground*) (arg))->u.castle10.state[i])
+#endif
 static inline void grCastle_801D0550_sub(unkCastle* arg0, s32 i)
 {
+#ifdef PORT
+    CASTLE_HIT(arg0, i) = 1;
+    grMaterial_801C8CDC((Item_GObj*) (uintptr_t) CASTLE_ITEM(arg0, i));
+    CASTLE_ITEM(arg0, i) = 0;
+#else
     arg0->x134[i] = 1;
     grMaterial_801C8CDC(arg0->x10C[i]);
     arg0->x10C[i] = NULL;
+#endif
     Ground_801C53EC(0x53020U);
 }
 
@@ -1732,9 +1748,15 @@ void grCastle_801D0680(void* arg0, unkCastle* arg1)
 static void grCastle_801D06CC_sub(unkCastle* arg0, Ground_GObj* gobj, s32 i)
 {
     if (ftLib_IsFighter(gobj) || itGetKind(gobj) != It_PKind_Random) {
+#ifdef PORT
+        CASTLE_HIT(arg0, i) = 1;
+        grMaterial_801C8CDC((Item_GObj*) (uintptr_t) CASTLE_ITEM(arg0, i));
+        CASTLE_ITEM(arg0, i) = 0;
+#else
         arg0->x134[i] = 1;
         grMaterial_801C8CDC(arg0->x10C[i]);
         arg0->x10C[i] = NULL;
+#endif
         Ground_801C53EC(0x53020U);
     }
 }

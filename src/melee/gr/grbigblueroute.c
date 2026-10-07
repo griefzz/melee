@@ -489,9 +489,20 @@ void grBigBlueRoute_8020C238(Ground_GObj* gobj)
         }
     }
 
+#ifdef PORT
+    // PORT: 0x554 is 31 RouteEntry records of the console's 0x2C bytes.
+    // RouteEntry ends in a pointer and is 0x30 here, so the console's byte
+    // count overruns the block by 124 bytes into the heap's next one. Sized
+    // by the type.
+    gp->u.car.car_info =
+        HSD_MemAlloc(sizeof(union grBigBlueRoute_RouteStorage));
+    HSD_ASSERT(0x2A2, gp->u.car.car_info);
+    memzero(gp->u.car.car_info, sizeof(union grBigBlueRoute_RouteStorage));
+#else
     gp->u.car.car_info = HSD_MemAlloc(0x554);
     HSD_ASSERT(0x2A2, gp->u.car.car_info);
     memzero(gp->u.car.car_info, 0x554);
+#endif
 
     gp->u.car.x10A = 0;
     gp->u.car.x108 = 0;
@@ -1044,9 +1055,17 @@ void grBigBlueRoute_8020CD20(Ground_GObj* gobj)
         }
 
         i++;
+#ifdef PORT
+        // PORT: grBigBlueRoute_8020DA9C() is HSD_JObjGetNext() written
+        // against the console's offsets (`next` is +8 there), returning it
+        // through an int. Here +8 is another field and the int sign-extends
+        // a MEM1 address. The real accessor.
+        jobj = (jobj != NULL) ? HSD_JObjGetNext(jobj) : NULL;
+#else
         jobj = (jobj != NULL) ? (HSD_JObj*) grBigBlueRoute_8020DA9C(
                                     (struct grBigBlueRoute_8020DA9C_t*) jobj)
                               : NULL;
+#endif
     } while (i < 31);
 }
 #undef RE_ENTRY
@@ -1151,7 +1170,17 @@ DynamicModelDesc* grBigBlueRoute_8020DE48(void)
     HSD_ASSERT(1495, archive);
     dat = archive->unk4;
     if (dat != NULL) {
+#ifdef PORT
+        // PORT: `+ 0x68` is 2 * sizeof(UnkStageDat_x8_t) with the console's
+        // 0x34, which an ASSERT_SIZE in gr/types.h states. The struct holds
+        // pointers, so it is larger here and the byte offset lands inside
+        // element 0 or 1. Indexed instead. The cast is sound on both targets:
+        // UnkStageDat_x8_t begins with the four pointers of a
+        // DynamicModelDesc, field for field.
+        return (DynamicModelDesc*) &dat->unk8[2];
+#else
         return (DynamicModelDesc*) ((char*) dat->unk8 + 0x68);
+#endif
     }
     return NULL;
 }

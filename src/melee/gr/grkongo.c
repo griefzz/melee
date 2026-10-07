@@ -742,6 +742,20 @@ bool grKongo_801D6660(Ground_GObj* arg)
     return 0;
 }
 
+#ifdef PORT
+// PORT: the running maximum of the spline platform's height. `u.kongo.xD8`
+// and `u.kongo2.xD8` are the same console offset (gp+D8) and not the same
+// native one: the kongo arm has a pointer-bearing union above it and the
+// kongo2 arm an HSD_Spline* at its base. The kongo arm's lands on
+// `u.kongo2.xDC`, the running minimum of z this function also keeps, and
+// the shared word ends as a NaN in a fighter's ECB. grKongo_801D651C()
+// initialises it through the kongo2 arm, so it is read there too. See
+// docs/design/verification.md, "Union arms".
+#define KONGO_SPLINE_MAX_Y(gp) ((gp)->u.kongo2.xD8)
+#else
+#define KONGO_SPLINE_MAX_Y(gp) ((gp)->u.kongo.xD8)
+#endif
+
 void grKongo_801D6668(Ground_GObj* arg0)
 {
     Vec3 sp5C;
@@ -802,14 +816,14 @@ void grKongo_801D6668(Ground_GObj* arg0)
     sp34.z = sp50.z;
     sp34.w = 1.0f;
     HSD_JObjSetRotation(jobj, &sp34);
-    if (gp->u.kongo.xD8 < sp5C.y) {
-        gp->u.kongo.xD8 = sp5C.y;
+    if (KONGO_SPLINE_MAX_Y(gp) < sp5C.y) {
+        KONGO_SPLINE_MAX_Y(gp) = sp5C.y;
     }
     if (gp->u.kongo2.xDC > sp5C.z) {
         gp->u.kongo2.xDC = sp5C.z;
     }
-    if (((gp->u.kongo.xD8 - sp44.y) < 5.0f) &&
-        ((gp->u.kongo.xD8 - sp5C.y) > 5.0f))
+    if (((KONGO_SPLINE_MAX_Y(gp) - sp44.y) < 5.0f) &&
+        ((KONGO_SPLINE_MAX_Y(gp) - sp5C.y) > 5.0f))
     {
         Ground_801C5440(gp, 0, 0x5A550U);
         Ground_801C5630(gp, 0, 1.0f - (sp5C.z / gp->u.kongo2.xDC));
@@ -1147,7 +1161,19 @@ void grKongo_801D77E0(HSD_GObj* gobj, s32 arg1)
                     q->u.kongo.xC8 = 0.0f;
                 }
             }
+#ifdef PORT
+            // PORT: 0x10 is the distance from `u.kongo.xC4` to `u.kongo.xD4`
+            // on the console, which is what this loop steps: two (angle,
+            // velocity) pairs, the four fields the `arg1 != 0` branch above
+            // zeroes by name. Between the pairs lies `u.kongo.u`, a union
+            // holding a pointer, so here the second pair is at +24, and a
+            // step of 16 writes 0.0f over the barrel's joint
+            // (`u.kongo.u.taru.keep`). The step is the fields' distance.
+            q = (Ground*) ((u8*) q + ((u8*) &gp->u.kongo.xD4 -
+                                      (u8*) &gp->u.kongo.xC4));
+#else
             q = (Ground*) ((u8*) q + 0x10);
+#endif
         }
     }
     HSD_JObjSetRotationZ(gp->u.kongo3.xCC, gp->u.kongo.xC4);

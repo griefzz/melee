@@ -192,10 +192,27 @@
 
 typedef struct LightOverrideEntry {
     /* 0x0 */ HSD_LightDesc* desc;
+#if defined(PORT) || defined(LINT)
+    // PORT: the byte at +4 comes straight out of the stage file (the DAT
+    // transcoder copies it, as a bitfield run has no scalar to swap), so it
+    // arrives as MWCC packed it, most significant bit first; clang fills
+    // from the bottom bit up. Reversed within the byte, with the five unused
+    // bits spelled out, each flag lands on the bit the file names. `c`
+    // matters most: Ground_801C20E0() turns it into LObj flag 0x400, the
+    // shadow-casting light lbShadow_8000F38C() looks for, and without it the
+    // shadow camera is aimed along the wrong light. Guarded for LINT too, so
+    // the schema's console pass sees the same names. See
+    // docs/design/verification.md, "Bitfield order".
+    /* 0x4 */ u8 _ : 5;
+    /* 0x4 */ u8 c : 1;
+    /* 0x4 */ u8 b : 1;
+    /* 0x4 */ u8 a : 1;
+#else
     /* 0x4 */ u8 a : 1;
     /* 0x4 */ u8 b : 1;
     /* 0x4 */ u8 c : 1;
     /* 0x4 */ u8 _ : 5;
+#endif
     /* 0x5 */ u8 _pad[3];
 } LightOverrideEntry;
 

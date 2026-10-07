@@ -1,4 +1,7 @@
 #include "groldpupupu.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <sysdolphin/baselib/forward.h>
 
@@ -572,7 +575,25 @@ struct grOldPupupu_802113E0_stack {
     u8 tail[16];
 };
 
+#ifdef PORT
+// PORT: the whispy_state_checked hook reports Whispy's state where Slippi's
+// SendDreamlandInfo reads it: at this function's epilogue
+// (grOldPupupu_802113E0+0x818), after either of its returns. A wrapper is
+// there without touching each return.
+static void grOldPupupu_802113E0_body(Ground_GObj* gobj);
+
 void grOldPupupu_802113E0(Ground_GObj* gobj)
+{
+    Ground* gp = gobj->user_data;
+
+    grOldPupupu_802113E0_body(gobj);
+    port_hook_whispy_state_checked(gp->u.oldpupupu.xDC);
+}
+
+static void grOldPupupu_802113E0_body(Ground_GObj* gobj)
+#else
+void grOldPupupu_802113E0(Ground_GObj* gobj)
+#endif
 {
     Ground* gp = gobj->user_data;
 

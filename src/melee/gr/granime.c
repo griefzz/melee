@@ -1,4 +1,7 @@
 #include "granime.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <Runtime/platform.h>
 
@@ -68,6 +71,27 @@ void grAnime_801C65B0(UnkArchiveStruct* arg0)
     if (arg0 == NULL) {
         return;
     }
+#ifdef PORT
+    // PORT: Slippi's CustomZeroBuffer (Online/Core/Hacks/Stadium, at
+    // +0x18), the whole body over again. An already-zeroed slot is left
+    // alone ("probably a rollback"), a heap-allocated archive (unk8 == 1) is
+    // freed, and a DVD-loaded one (unk8 == 0) is not returned through
+    // lbArchive_80016EFC(), only zeroed. Runs whenever the Slippi mod is on,
+    // as the asm has no online test.
+    if (port_hook_stage_archive_zero_custom()) {
+        if ((uintptr_t) arg0->unk0 != -1U) {
+            if (arg0->unk0 == NULL && arg0->unk4 == NULL && arg0->unk8 == 0)
+            {
+                return;
+            }
+            if (arg0->unk8 == 1) {
+                lbHeap_80015CA8(0, arg0->unk0);
+            }
+        }
+        memzero(arg0, sizeof(*arg0));
+        return;
+    }
+#endif
     if ((uintptr_t) arg0->unk0 != -1U) {
         if (arg0->unk8 == 0) {
             lbArchive_80016EFC(arg0->unk0);
@@ -503,6 +527,60 @@ typedef void (*Callback3)(HSD_AObj* aobj, HSD_TObj* obj, int param);
 void grAnime_801C6F50(HSD_AObj* aobj, void* obj, u32 flags, void* func,
                       u32 type, void* param)
 {
+#ifdef PORT
+    // PORT: `type` is an AObj_Arg_Type and `param` the callbackArg union the
+    // walkers fill from their varargs (grAnime_801C752C()). The decomp's
+    // cases name the instruction sequences MWCC emitted, not the callees'
+    // signatures: on PowerPC integer and float arguments travel in separate
+    // register files and `aobj`, `obj` and `flags` already sit in r3-r5, so
+    // any call reaches a callee that reads only what it wants. On Win64 the
+    // argument slots are numbered across both files, so an empty call hands
+    // HSD_AObjSetFlags() a stale register, a float lands in the wrong xmm,
+    // and `*(int*) param` truncates a pointer. This is sysdolphin's own
+    // dispatch for the same union, callbackForeachFunc() (aobj.c).
+    callbackArg* arg = param;
+    switch (type) {
+    case AOBJ_ARG_A:
+        (*(void (*)(HSD_AObj*)) func)(aobj);
+        break;
+    case AOBJ_ARG_AF:
+        (*(void (*)(HSD_AObj*, f32)) func)(aobj, arg->f);
+        break;
+    case AOBJ_ARG_AV:
+        (*(void (*)(HSD_AObj*, void*)) func)(aobj, arg->v);
+        break;
+    case AOBJ_ARG_AU:
+        (*(void (*)(HSD_AObj*, u32)) func)(aobj, arg->d);
+        break;
+    case AOBJ_ARG_AO:
+        (*(void (*)(HSD_AObj*, void*)) func)(aobj, obj);
+        break;
+    case AOBJ_ARG_AOT:
+        (*(void (*)(HSD_AObj*, void*, u32)) func)(aobj, obj, flags);
+        break;
+    case AOBJ_ARG_AOF:
+        (*(void (*)(HSD_AObj*, void*, f32)) func)(aobj, obj, arg->f);
+        break;
+    case AOBJ_ARG_AOV:
+        (*(void (*)(HSD_AObj*, void*, void*)) func)(aobj, obj, arg->v);
+        break;
+    case AOBJ_ARG_AOU:
+        (*(void (*)(HSD_AObj*, void*, u32)) func)(aobj, obj, arg->d);
+        break;
+    case AOBJ_ARG_AOTF:
+        (*(void (*)(HSD_AObj*, void*, u32, f32)) func)(aobj, obj, flags,
+                                                       arg->f);
+        break;
+    case AOBJ_ARG_AOTV:
+        (*(void (*)(HSD_AObj*, void*, u32, void*)) func)(aobj, obj, flags,
+                                                         arg->v);
+        break;
+    case AOBJ_ARG_AOTU:
+        (*(void (*)(HSD_AObj*, void*, u32, u32)) func)(aobj, obj, flags,
+                                                       arg->d);
+        break;
+    }
+#else
     switch (type) {
     case 0:
         ((Event) func)();
@@ -541,6 +619,7 @@ void grAnime_801C6F50(HSD_AObj* aobj, void* obj, u32 flags, void* func,
         ((Callback4) func)(aobj, obj, flags, *(int*) param);
         break;
     }
+#endif
 }
 
 void grAnime_801C706C(HSD_TObj* tobj, s32 flags, void* func, u32 type,

@@ -1,3 +1,6 @@
+#if defined(PORT) || defined(LINT)
+#include <stddef.h> // PORT: offsetof, for BB_CAR() and the car's views
+#endif
 #include "grbigblue.h"
 
 #include <Runtime/platform.h>
@@ -517,7 +520,15 @@ void grBigBlue_801E6364(Ground_GObj* gobj)
     scale.x = scale.y = scale.z = 1.0F;
     HSD_JObjSetScale(jobj, &scale);
 
+#ifdef PORT
+    // PORT: 120 is 30 * 4, the console's pointer width, and the loops below
+    // fill and reparent all thirty. Here that is half an array, and
+    // HSD_JObjReparent() would read through fifteen words of heap.
+    gp->u.bigblue.x0_u.car.collision_jobjs =
+        HSD_MemAlloc(30 * sizeof(*gp->u.bigblue.x0_u.car.collision_jobjs));
+#else
     gp->u.bigblue.x0_u.car.collision_jobjs = HSD_MemAlloc(120);
+#endif
     HSD_ASSERT(774, gp->u.carnull.coll_jobj);
 
     gp->u.bigblue.x0_u.car.ranks = HSD_MemAlloc(30);
@@ -1410,6 +1421,17 @@ static f32 grBigBlue_801E8B84_noinline_2(f32 right, f32 left, f32 bottom,
     return grBigBlue_801E8B84_noinline_1(right, left, bottom, top);
 }
 
+#ifdef PORT
+// PORT: one car lane further on. `&gp->x20[8]` is gp + 0x40 on the console,
+// where Ground.x20 is an int[8] at 0x20, exactly one grBigBlue_CarLane; here
+// it is gp + 88, as x20 sits at 56 while a lane is still 0x40, and lanes 1-3
+// would be read 24, 48 and 72 bytes off.
+#define BB_NEXT_LANE(gp)                                                       \
+    ((Ground*) ((u8*) (gp) + sizeof(struct grBigBlue_CarLane)))
+#else
+#define BB_NEXT_LANE(gp) ((Ground*) &(gp)->x20[8])
+#endif
+
 f32 grBigBlue_801E8B84(f32 right, f32 left, f32 bottom, f32 top)
 {
     Ground* gp = Ground_GetMapGObj(33)->user_data;
@@ -1433,7 +1455,7 @@ f32 grBigBlue_801E8B84(f32 right, f32 left, f32 bottom, f32 top)
     }
 
     state = gp->u.bigblue.x0_u.car.lanes[i + 1].x0.x0.state;
-    gp = (Ground*) &gp->x20[8];
+    gp = BB_NEXT_LANE(gp);
     if ((unsigned) state != 1U) {
         if (gp->u.bigblue.x0_u.car.lanes[0].pos.y < right &&
             gp->u.bigblue.x0_u.car.lanes[0].pos.y > left)
@@ -1450,7 +1472,7 @@ f32 grBigBlue_801E8B84(f32 right, f32 left, f32 bottom, f32 top)
     }
 
     state = gp->u.bigblue.x0_u.car.lanes[1].x0.x0.state;
-    gp = (Ground*) &gp->x20[8];
+    gp = BB_NEXT_LANE(gp);
     if ((unsigned) state != 1U) {
         if (gp->u.bigblue.x0_u.car.lanes[0].pos.y < right &&
             gp->u.bigblue.x0_u.car.lanes[0].pos.y > left)
@@ -1466,7 +1488,7 @@ f32 grBigBlue_801E8B84(f32 right, f32 left, f32 bottom, f32 top)
     }
 
     state = gp->u.bigblue.x0_u.car.lanes[1].x0.x0.state;
-    gp = (Ground*) &gp->x20[8];
+    gp = BB_NEXT_LANE(gp);
     if ((unsigned) state != 1U) {
         if (gp->u.bigblue.x0_u.car.lanes[0].pos.y < right &&
             gp->u.bigblue.x0_u.car.lanes[0].pos.y > left)
@@ -1519,11 +1541,19 @@ void grBigBlue_801E8D64(Ground_GObj* gobj)
     scale.x = scale.y = scale.z = Ground_801C0498();
     HSD_JObjSetScale(jobj, &scale);
 
+#ifdef PORT
+    // PORT: gp+0xCC of the platform manager (gobj 32) is
+    // manager.event_data[1], the "flyer is out" slot grBigBlue_801E89DC(1)
+    // reads. Ground.u is at 0x100 here, so the console's offset writes the
+    // manager's color_overlay instead. Set through the manager's setter.
+    grBigBlue_801E8978(1, (void*) 1, NULL);
+#else
     {
         HSD_GObj* other = Ground_GetMapGObj(32);
         Ground* other_gp = other->user_data;
         *(s32*) ((u8*) other_gp + 0xCC) = 1;
     }
+#endif
 
     y_pos = grBigBlue_801EC58C(&pos, NULL, 500.0f);
     if (-3.4028235e38f == y_pos) {
@@ -1537,9 +1567,17 @@ void grBigBlue_801E8D64(Ground_GObj* gobj)
 
     HSD_JObjSetTranslateZ(jobj, 0.0F);
 
+#ifdef PORT
+    // PORT: the flyer's own velocity, timer and state, by name; at the
+    // console's offsets they are Ground.color_overlay here.
+    gp->u.bigblue.x0_u.flyer.velocity_x = 0.0F;
+    gp->u.bigblue.x0_u.flyer.timer = (s32) yakumono_param->xD8;
+    gp->u.bigblue.x0_u.flyer.state = 2;
+#else
     *(f32*) ((u8*) gp + 0xD8) = 0.0F;
     *(s32*) ((u8*) gp + 0xC8) = (s32) yakumono_param->xD8;
     *((u8*) gp + 0xC4) = 2;
+#endif
 
     grAnime_801C8138(gobj, gp->map_id, 0);
 
@@ -1593,6 +1631,24 @@ static inline s32 grBigBlue_CountCars(void)
     return count;
 }
 
+#ifdef PORT
+// PORT: grBigBlue_801E93D8() reaches the Falcon Flyer's fields (gobj 35)
+// through `u8* bp` at the console's byte offsets: Ground.u + n there, and
+// Ground.color_overlay here, where Ground.u is at 0x100. Named through
+// grBigBlue_FlyerVars instead; the #else is the console's spelling.
+#define BB_FLY_STATE(bp) (((Ground*) (bp))->u.bigblue.x0_u.flyer.state)
+#define BB_FLY_TIMER(bp) (((Ground*) (bp))->u.bigblue.x0_u.flyer.timer)
+#define BB_FLY_ROT_Z(bp) (((Ground*) (bp))->u.bigblue.x0_u.flyer.rotation_z)
+#define BB_FLY_TARGET_Y(bp) (((Ground*) (bp))->u.bigblue.x0_u.flyer.target_y)
+#define BB_FLY_VEL_X(bp) (((Ground*) (bp))->u.bigblue.x0_u.flyer.velocity_x)
+#else
+#define BB_FLY_STATE(bp) ((bp)[0xC4])
+#define BB_FLY_TIMER(bp) (*(s32*) ((bp) + 0xC8))
+#define BB_FLY_ROT_Z(bp) (*(f32*) ((bp) + 0xCC))
+#define BB_FLY_TARGET_Y(bp) (*(f32*) ((bp) + 0xD0))
+#define BB_FLY_VEL_X(bp) (*(f32*) ((bp) + 0xD8))
+#endif
+
 void grBigBlue_801E93D8(Ground_GObj* gobj)
 {
     Vec3 pos;
@@ -1632,12 +1688,18 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
     lbVector_Add(&back, &pos);
 
     {
-        s8 state = (s8) bp[0xC4];
+        s8 state = (s8) BB_FLY_STATE(bp);
 
         switch (state) {
         case 0:
+#ifdef PORT
+            // PORT: grBb_GroundStateFlag is Ground with xCC at the console's
+            // gp+0xCC: the manager's event_data[1], read by its accessor.
+            if (grBigBlue_801E89DC(1) != NULL)
+#else
             if (((grBb_GroundStateFlag*) Ground_GetMapGObj(32)->user_data)
                     ->xCC != 0)
+#endif
             {
                 s32 count = grBigBlue_CountCars();
 
@@ -1683,10 +1745,10 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
                                 1739, 0, "*** Not Set Position!(FFlyer)\n");
                         }
                         HSD_JObjSetTranslate(jobj, &pos);
-                        *(f32*) (bp + 0xD0) = pos.y;
-                        *(f32*) (bp + 0xD8) = yakumono_param->xD0;
+                        BB_FLY_TARGET_Y(bp) = pos.y;
+                        BB_FLY_VEL_X(bp) = yakumono_param->xD0;
                         HSD_JObjClearFlagsAll(jobj, JOBJ_HIDDEN);
-                        bp[0xC4] = 1;
+                        BB_FLY_STATE(bp) = 1;
                     }
                 }
             }
@@ -1697,9 +1759,9 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
             switch (state) {
             case 1:
                 if (pos.x > 0.0f) {
-                    *(f32*) (bp + 0xD8) = 0.0f;
-                    *(s32*) (bp + 0xC8) = (s32) yakumono_param->xD8;
-                    bp[0xC4] = 2;
+                    BB_FLY_VEL_X(bp) = 0.0f;
+                    BB_FLY_TIMER(bp) = (s32) yakumono_param->xD8;
+                    BB_FLY_STATE(bp) = 2;
                 } else {
                     f32 range_scale;
                     f32 range;
@@ -1715,22 +1777,39 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
                             &pos, 1, (60.0f * Ground_801C0498()) + 30.0f,
                             next_velocity = 140.0f * Ground_801C0498()) != 0)
                     {
-                        *(f32*) (bp + 0xD8) = 0.0f;
+                        BB_FLY_VEL_X(bp) = 0.0f;
                     } else {
-                        *(f32*) (bp + 0xD8) = yakumono_param->xD0;
+                        BB_FLY_VEL_X(bp) = yakumono_param->xD0;
                     }
                 }
                 break;
             case 2: {
-                s32 timer = *(s32*) (bp + 0xC8);
+                s32 timer = BB_FLY_TIMER(bp);
                 if (timer <= 0) {
                     s32 idx;
+#ifdef PORT
+                    Ground* mgp;
+#else
                     u8* p;
                     u8* mgp;
                     s32 ctr = 3;
+#endif
 
-                    *(f32*) (bp + 0xD8) = yakumono_param->xD0;
-                    bp[0xC4] = 3;
+                    BB_FLY_VEL_X(bp) = yakumono_param->xD0;
+                    BB_FLY_STATE(bp) = 3;
+#ifdef PORT
+                    // PORT: wake the first idle platform car: the manager's
+                    // x0_s.data[idx].x1 and .x4, which the console reaches
+                    // as gp+0xE5 and gp+0xE8 in steps of 0x54.
+                    mgp = GET_GROUND(Ground_GetMapGObj(32));
+                    for (idx = 0; idx < 3; idx++) {
+                        if ((s8) mgp->u.bigblue.x0_u.x0_s.data[idx].x1 == 0) {
+                            mgp->u.bigblue.x0_u.x0_s.data[idx].x1 = 2;
+                            mgp->u.bigblue.x0_u.x0_s.data[idx].x4 = 0;
+                            break;
+                        }
+                    }
+#else
                     mgp = Ground_GetMapGObj(32)->user_data;
                     idx = 0;
                     p = mgp;
@@ -1746,15 +1825,25 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
                         idx++;
                         ctr--;
                     }
+#endif
                 } else {
-                    *(s32*) (bp + 0xC8) = timer - 1;
+                    BB_FLY_TIMER(bp) = timer - 1;
                 }
                 break;
             }
             case 3:
                 if (pos.x > (50.0f + Stage_GetBlastZoneRightOffset())) {
                     HSD_JObjSetFlagsAll(jobj, JOBJ_HIDDEN);
-                    *(f32*) (bp + 0xD8) = 0.0f;
+                    BB_FLY_VEL_X(bp) = 0.0f;
+#ifdef PORT
+                    // PORT: the manager's event_data[1] (gp+0xCC),
+                    // event_extra (gp+0xE0) and event_data[0] (gp+0xC8),
+                    // through the manager's own setter, which writes extra
+                    // only when it is non-NULL, as the console's
+                    // `if (jobj != NULL)` does.
+                    grBigBlue_801E8978(1, NULL, NULL);
+                    grBigBlue_801E8978(0, (void*) 1, jobj);
+#else
                     {
                         grBb_GroundStateFlag* manager =
                             Ground_GetMapGObj(32)->user_data;
@@ -1767,9 +1856,10 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
                         }
                         *(s32*) (mgp2 + 0xC8) = 1;
                     }
-                    *(f32*) (bp + 0xCC) = 0.0f;
+#endif
+                    BB_FLY_ROT_Z(bp) = 0.0f;
                     HSD_JObjSetRotationZ(jobj, 0.0f);
-                    bp[0xC4] = 0;
+                    BB_FLY_STATE(bp) = 0;
                 }
                 break;
             }
@@ -1781,16 +1871,16 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
                 f32 check_h;
 
                 target_z = euler.z;
-                *(f32*) (bp + 0xCC) = target_z;
-                if (HSD_JObjGetRotationZ(jobj) < *(f32*) (bp + 0xCC)) {
+                BB_FLY_ROT_Z(bp) = target_z;
+                if (HSD_JObjGetRotationZ(jobj) < BB_FLY_ROT_Z(bp)) {
                     f32 target;
                     f32 delta =
                         0.017453292f *
                         (yakumono_param->xD4 *
-                         (*(f32*) (bp + 0xCC) - HSD_JObjGetRotationZ(jobj)));
+                         (BB_FLY_ROT_Z(bp) - HSD_JObjGetRotationZ(jobj)));
                     HSD_JObjAddRotationZ(jobj, delta);
                     if (HSD_JObjGetRotationZ(jobj) >=
-                        (target = *(f32*) (bp + 0xCC)))
+                        (target = BB_FLY_ROT_Z(bp)))
                     {
                         HSD_JObjSetRotationZ(jobj, target);
                     }
@@ -1799,10 +1889,10 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
                     f32 delta =
                         0.017453292f *
                         (yakumono_param->xD4 *
-                         (*(f32*) (bp + 0xCC) - HSD_JObjGetRotationZ(jobj)));
+                         (BB_FLY_ROT_Z(bp) - HSD_JObjGetRotationZ(jobj)));
                     HSD_JObjAddRotationZ(jobj, delta);
                     if (HSD_JObjGetRotationZ(jobj) <=
-                        (target = *(f32*) (bp + 0xCC)))
+                        (target = BB_FLY_ROT_Z(bp)))
                     {
                         HSD_JObjSetRotationZ(jobj, target);
                     }
@@ -1820,27 +1910,27 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
                 check_h = grBigBlue_801EC58C(&check_pos, NULL, 500.0f);
                 if (bound_y <= check_h) {
                     if (check_h == -3.4028235e38f) {
-                        *(f32*) (bp + 0xD0) = fwd.y;
+                        BB_FLY_TARGET_Y(bp) = fwd.y;
                     } else {
-                        *(f32*) (bp + 0xD0) = check_h + yakumono_param->xCC;
+                        BB_FLY_TARGET_Y(bp) = check_h + yakumono_param->xCC;
                     }
                 } else {
-                    *(f32*) (bp + 0xD0) = bound_y + yakumono_param->xCC;
+                    BB_FLY_TARGET_Y(bp) = bound_y + yakumono_param->xCC;
                 }
 
-                diff_y = pos.y - *(f32*) (bp + 0xD0);
+                diff_y = pos.y - BB_FLY_TARGET_Y(bp);
                 if (diff_y < 0.0f) {
                     diff_y = -diff_y;
                 }
                 if (diff_y < 0.5f) {
                     vy = 0.0f;
-                } else if (pos.y < *(f32*) (bp + 0xD0)) {
-                    vy = (*(f32*) (bp + 0xD0) - pos.y) / yakumono_param->xE4;
+                } else if (pos.y < BB_FLY_TARGET_Y(bp)) {
+                    vy = (BB_FLY_TARGET_Y(bp) - pos.y) / yakumono_param->xE4;
                     if (vy > yakumono_param->xE8) {
                         vy = yakumono_param->xE8;
                     }
                 } else {
-                    vy = (*(f32*) (bp + 0xD0) - pos.y) / yakumono_param->xEC;
+                    vy = (BB_FLY_TARGET_Y(bp) - pos.y) / yakumono_param->xEC;
                     if (vy < -yakumono_param->xF0) {
                         vy = -yakumono_param->xF0;
                     }
@@ -1848,7 +1938,7 @@ void grBigBlue_801E93D8(Ground_GObj* gobj)
                 pos.y += vy;
 
                 {
-                    f32 translate_x = *(f32*) (bp + 0xD8);
+                    f32 translate_x = BB_FLY_VEL_X(bp);
                     HSD_JObjAddTranslationX(jobj, translate_x);
                 }
                 {
@@ -1878,8 +1968,17 @@ void grBigBlue_801E9F3C(Ground_GObj* gobj)
 
     HSD_JObjSetScale(jobj, &v);
 
+#ifdef PORT
+    // PORT: this platform's state byte (gobj 36; grBigBlue_801EA05C() reads
+    // it as x0_s.x0_u.x0_s.x0, the same byte), and the manager's
+    // event_data[2] (gp+0xD0 of gobj 32), which grBigBlue_801EA05C() waits
+    // on. At the console's offsets both are Ground.color_overlay here.
+    gp->u.bigblue.x0_u.platform.xC4 = 0;
+    grBigBlue_801E8978(2, NULL, NULL);
+#else
     ((u8*) gp)[0xC4] = 0;
     *(s32*) ((u8*) GET_GROUND(Ground_GetMapGObj(32)) + 0xD0) = 0;
+#endif
     grAnime_801C8138(gobj, gp->map_id, 0);
 }
 
@@ -1926,7 +2025,13 @@ void grBigBlue_801EA05C(Ground_GObj* gobj)
 
     switch ((s8) gp->u.bigblue.x0_u.x0_s.x0_u.x0_s.x0) {
     case 0:
+#ifdef PORT
+        // PORT: gp+0xD0 of the manager (gobj 32) is event_data[2], which
+        // grBigBlue_801E6C60() sets through grBigBlue_801E8978(2, ...).
+        if (grBigBlue_801E89DC(2) != NULL) {
+#else
         if (*(s32*) ((u8*) GET_GROUND(Ground_GetMapGObj(32)) + 0xD0) != 0) {
+#endif
             gp->u.bigblue.x0_u.platform.xC8_timer = 0;
             gp->u.bigblue.x0_u.platform.xD0_timer = 0;
             gp->u.bigblue.x0_u.platform.xCC_timer = 0;
@@ -2179,8 +2284,14 @@ void grBigBlue_801EA05C(Ground_GObj* gobj)
             gp->u.bigblue.x0_u.platform.xEC = 0.0f;
             gp->u.bigblue.x0_u.platform.velocity.z = 0.0f;
             gp->u.bigblue.x0_u.platform.velocity.y = 0.0f;
+#ifdef PORT
+            // PORT: the same event_data[2], whole; x0_s.xD0 is its low half
+            // here.
+            grBigBlue_801E8978(2, NULL, NULL);
+#else
             *(u32*) &GET_GROUND(Ground_GetMapGObj(32))
                  ->u.bigblue.x0_u.x0_s.xD0 = 0;
+#endif
             gp->u.bigblue.x0_u.x0_s.x0_u.x0_s.x0 = 0;
         }
         break;
@@ -2273,9 +2384,17 @@ s32 grBigBlue_801EACE8(HSD_JObj* exclude, Vec3* point, f32* out_y,
             continue;
         }
 
+#ifdef PORT
+        // PORT: platform car i's state, x0_s.data[i].x1: gp+0xE5 in steps of
+        // 0x54 on the console.
+        if ((int) gp->u.bigblue.x0_u.x0_s.data[i].x1 != 3) {
+            continue;
+        }
+#else
         if ((int) ((u8*) gp)[0xE5 + i * 0x54] != 3) {
             continue;
         }
+#endif
 
         HSD_JObjGetTranslation2(jobj, &pos);
 
@@ -2671,6 +2790,40 @@ void grBigBlue_801EB4AC(Ground_GObj* gobj)
     mpLib_80058560();
 }
 
+#ifdef PORT
+// PORT: the car's collision-line slot, console halfword bits 8..4 at gp+D4,
+// is the one field of grBigBlue_CarLane with no reversed spelling: it is
+// byte 0's low bit followed by the top nibble of byte 1, which big-endian
+// order puts side by side in the halfword and little-endian order does not.
+// Composed from the two bytes here, named directly on the console. See
+// docs/design/verification.md, "Two views of one bitfield".
+#define BB_LANE_SLOT(l)                                                        \
+    ((u32) (((l)->x0.x0.state_hi << 4) | ((l)->x0.x0.x1 >> 4)))
+#define BB_LANE_SET_SLOT(l, v)                                                 \
+    ((void) ((l)->x0.x0.state_hi = (u8) (((v) >> 4) & 1),                      \
+             (l)->x0.x0.x1 =                                                   \
+                 (u8) (((l)->x0.x0.x1 & 0x0F) | (((v) & 0x0F) << 4))))
+#else
+#define BB_LANE_SLOT(l) ((u32) (l)->x0.x0_1.collision_slot)
+#define BB_LANE_SET_SLOT(l, v) ((void) ((l)->x0.x0_1.collision_slot = (v)))
+#endif
+
+#ifdef PORT
+// PORT: reversed, like grBigBlue_CarLane's byte, for the same reason: b0 is
+// the console's most significant bit. grBigBlue_801ED694() casts this over
+// the lane's status byte, where `b6` is the `direction` bit: bit 1 on the
+// console, and bit 6 here if the run is left in declaration order.
+typedef struct grBb_ByteBits {
+    u8 b7 : 1;
+    u8 b6 : 1;
+    u8 b5 : 1;
+    u8 b4 : 1;
+    u8 b3 : 1;
+    u8 b2 : 1;
+    u8 b1 : 1;
+    u8 b0 : 1;
+} grBb_ByteBits;
+#else
 typedef struct grBb_ByteBits {
     u8 b0 : 1;
     u8 b1 : 1;
@@ -2681,6 +2834,7 @@ typedef struct grBb_ByteBits {
     u8 b6 : 1;
     u8 b7 : 1;
 } grBb_ByteBits;
+#endif
 
 u32 lbl_803E3010[] = {
     0x0006DDD2,
@@ -3000,7 +3154,7 @@ static inline void grBigBlue_801EC6C0_inline(Ground* gp, s32 car_idx,
     s32 hi;
     s32 lo;
 
-    gp->u.bigblue.x0_u.car.lanes[car_idx].x0.x0_1.collision_slot = line_idx;
+    BB_LANE_SET_SLOT(&gp->u.bigblue.x0_u.car.lanes[car_idx], line_idx);
 
     gp->u.bigblue.x0_u.car.lanes[car_idx].x0.x0.direction = 0;
 
@@ -3090,6 +3244,22 @@ static inline void grBigBlue_801EC6C0_inline(Ground* gp, s32 car_idx,
     gp->u.bigblue.x0_u.car.ranks[line_idx] = 1;
 }
 
+#if defined(PORT) || defined(LINT)
+// PORT: a console byte offset into the car gobj's Ground, converted to a
+// native one. This file reaches the four cars' state with `bp[0xD4]`,
+// `*(f32*) (p + 0xE0)` and so on, thirty-odd distances from the Ground's
+// base to a field of `u.bigblue.x0_u.car.lanes[]`, which is at gp+D4 on the
+// console. Here the union starts sixty bytes later and two pointers inside
+// grBigBlue_CarVars widen before it, so `lanes` is at 284 and every literal
+// is short by 72. The sites keep the console's numbers, which are what they
+// mean; offsetof(Ground, u.bigblue.x0_u.car.lanes) is 0xD4 on PowerPC, so
+// the expression is the identity there.
+#define BB_CAR(off)                                                            \
+    ((off) - 0xD4 + (s32) offsetof(Ground, u.bigblue.x0_u.car.lanes))
+#else
+#define BB_CAR(off) (off)
+#endif
+
 void grBigBlue_801EC6C0(Ground_GObj* gobj)
 {
     s32 car_idx;
@@ -3117,8 +3287,8 @@ void grBigBlue_801EC6C0(Ground_GObj* gobj)
             do {
                 line_idx = HSD_Randi(30);
                 for (i = 0; i < car_idx; i++) {
-                    if (gp->u.bigblue.x0_u.car.lanes[i]
-                            .x0.x0_1.collision_slot == line_idx)
+                    if (BB_LANE_SLOT(&gp->u.bigblue.x0_u.car.lanes[i]) ==
+                        (u32) line_idx)
                     {
                         break;
                     }
@@ -3148,14 +3318,14 @@ static inline void grBigBlue_FindClosestCar(Ground* gp, s32* found_ten,
 
     for (ctr = 0; ctr < 2; ctr++) {
         for (j = 0; j < 2; j++) {
-            u32 state = (car_p[0xD4] >> 2) & 0x3F;
+            u32 state = (car_p[BB_CAR(0xD4)] >> 2) & 0x3F;
 
             if (state == 10) {
                 *found_ten = 1;
                 return;
             }
             if (state != 1 && state != 7 && state != 8) {
-                dist = *(f32*) (car_p + 0xE0);
+                dist = *(f32*) (car_p + BB_CAR(0xE0));
                 if (dist < 0.0F) {
                     dist = -dist;
                 }
@@ -3241,21 +3411,21 @@ void grBigBlue_801ECB50(Ground_GObj* gobj)
         u8* bp = (u8*) gp;
         u8* p;
         u32 st;
-        st = (bp[0xD4] >> 2) & 0x3F;
+        st = (bp[BB_CAR(0xD4)] >> 2) & 0x3F;
         if (st != 1 && st != 7 && st != 8) {
             active_count = 1;
         }
         p = bp + 0x40;
-        st = (p[0xD4] >> 2) & 0x3F;
+        st = (p[BB_CAR(0xD4)] >> 2) & 0x3F;
         if (st != 1 && st != 7 && st != 8) {
             active_count++;
         }
         p += 0x40;
-        st = (p[0xD4] >> 2) & 0x3F;
+        st = (p[BB_CAR(0xD4)] >> 2) & 0x3F;
         if (st != 1 && st != 7 && st != 8) {
             active_count++;
         }
-        st = (p[0x114] >> 2) & 0x3F;
+        st = (p[BB_CAR(0x114)] >> 2) & 0x3F;
         if (st != 1 && st != 7 && st != 8) {
             active_count++;
         }
@@ -3280,75 +3450,94 @@ void grBigBlue_801ECB50(Ground_GObj* gobj)
             u8* target_car = bp + (closest_lane << 6);
 
             st_val = 10;
-            byte = target_car[0xD4];
+            byte = target_car[BB_CAR(0xD4)];
 #ifdef MUST_MATCH
             asm { rlwimi byte, st_val, 2, 24, 29 }
+#elif defined(PORT)
+            // PORT: rlwimi rA,rS,2,24,29 in C: rotate st_val left by two and
+            // insert bits 24..29 (big-endian numbering, 0xFC) into byte, the
+            // six-bit state field every raw read of this byte takes as
+            // (b >> 2) & 0x3F. Upstream has no portable arm; without one the
+            // car never enters this state.
+            byte = (u8) ((byte & ~0xFC) | ((st_val << 2) & 0xFC));
 #endif
-            target_car[0xD4] = byte;
+            target_car[BB_CAR(0xD4)] = byte;
 
             st_val = 4;
             {
-                u32 st = (bp[0xD4] >> 2) & 0x3F;
+                u32 st = (bp[BB_CAR(0xD4)] >> 2) & 0x3F;
                 if ((st == 7 &&
-                     *(f32*) (bp + 0xE0) < *(f32*) (target_car + 0xE0)) ||
+                     *(f32*) (bp + BB_CAR(0xE0)) < *(f32*) (target_car + BB_CAR(0xE0))) ||
                     (st == 8 &&
-                     *(f32*) (bp + 0xE0) > *(f32*) (target_car + 0xE0)))
+                     *(f32*) (bp + BB_CAR(0xE0)) > *(f32*) (target_car + BB_CAR(0xE0))))
                 {
-                    byte = bp[0xD4];
+                    byte = bp[BB_CAR(0xD4)];
 #ifdef MUST_MATCH
                     asm { rlwimi byte, st_val, 2, 24, 29 }
+#elif defined(PORT)
+                    // PORT: the same rlwimi in C, as above.
+                    byte = (u8) ((byte & ~0xFC) | ((st_val << 2) & 0xFC));
 #endif
-                    bp[0xD4] = byte;
+                    bp[BB_CAR(0xD4)] = byte;
                 }
             }
 
             p = bp + 0x40;
             {
-                u32 st = (p[0xD4] >> 2) & 0x3F;
+                u32 st = (p[BB_CAR(0xD4)] >> 2) & 0x3F;
                 if ((st == 7 &&
-                     *(f32*) (p + 0xE0) < *(f32*) (target_car + 0xE0)) ||
+                     *(f32*) (p + BB_CAR(0xE0)) < *(f32*) (target_car + BB_CAR(0xE0))) ||
                     (st == 8 &&
-                     *(f32*) (p + 0xE0) > *(f32*) (target_car + 0xE0)))
+                     *(f32*) (p + BB_CAR(0xE0)) > *(f32*) (target_car + BB_CAR(0xE0))))
                 {
-                    byte = p[0xD4];
+                    byte = p[BB_CAR(0xD4)];
 #ifdef MUST_MATCH
                     asm { rlwimi byte, st_val, 2, 24, 29 }
+#elif defined(PORT)
+                    // PORT: the same rlwimi in C, as above.
+                    byte = (u8) ((byte & ~0xFC) | ((st_val << 2) & 0xFC));
 #endif
-                    p[0xD4] = byte;
+                    p[BB_CAR(0xD4)] = byte;
                 }
             }
 
             {
                 u32 st;
                 p += 0x40;
-                st = (p[0xD4] >> 2) & 0x3F;
+                st = (p[BB_CAR(0xD4)] >> 2) & 0x3F;
                 if ((st == 7 &&
-                     *(f32*) (p + 0xE0) < *(f32*) (target_car + 0xE0)) ||
+                     *(f32*) (p + BB_CAR(0xE0)) < *(f32*) (target_car + BB_CAR(0xE0))) ||
                     (st == 8 &&
-                     *(f32*) (p + 0xE0) > *(f32*) (target_car + 0xE0)))
+                     *(f32*) (p + BB_CAR(0xE0)) > *(f32*) (target_car + BB_CAR(0xE0))))
                 {
-                    byte = p[0xD4];
+                    byte = p[BB_CAR(0xD4)];
 #ifdef MUST_MATCH
                     asm { rlwimi byte, st_val, 2, 24, 29 }
+#elif defined(PORT)
+                    // PORT: the same rlwimi in C, as above.
+                    byte = (u8) ((byte & ~0xFC) | ((st_val << 2) & 0xFC));
 #endif
-                    p[0xD4] = byte;
+                    p[BB_CAR(0xD4)] = byte;
                 }
             }
 
             {
                 u32 st;
                 p += 0x40;
-                st = (p[0xD4] >> 2) & 0x3F;
+                st = (p[BB_CAR(0xD4)] >> 2) & 0x3F;
                 if ((st == 7 &&
-                     *(f32*) (p + 0xE0) < *(f32*) (target_car + 0xE0)) ||
+                     *(f32*) (p + BB_CAR(0xE0)) < *(f32*) (target_car + BB_CAR(0xE0))) ||
                     (st == 8 &&
-                     *(f32*) (p + 0xE0) > *(f32*) (target_car + 0xE0)))
+                     *(f32*) (p + BB_CAR(0xE0)) > *(f32*) (target_car + BB_CAR(0xE0))))
                 {
-                    byte = p[0xD4];
+                    byte = p[BB_CAR(0xD4)];
 #ifdef MUST_MATCH
                     asm { rlwimi byte, st_val, 2, 24, 29 }
+#elif defined(PORT)
+                    // PORT: the same rlwimi in C, as above.
+                    byte = (u8) ((byte & ~0xFC) | ((st_val << 2) & 0xFC));
 #endif
-                    p[0xD4] = byte;
+                    p[BB_CAR(0xD4)] = byte;
                 }
             }
         }
@@ -3363,18 +3552,18 @@ void grBigBlue_801ECB50(Ground_GObj* gobj)
         gp->u.bigblue.x0_u.car.spawn_timer = timer - 1;
         if (timer < 0) {
             active_count = -1;
-            if ((u32) ((bp[0xD4] >> 2) & 0x3F) == 1) {
+            if ((u32) ((bp[BB_CAR(0xD4)] >> 2) & 0x3F) == 1) {
                 active_count = 0;
             } else {
                 p = bp + 0x40;
-                if ((u32) ((p[0xD4] >> 2) & 0x3F) == 1) {
+                if ((u32) ((p[BB_CAR(0xD4)] >> 2) & 0x3F) == 1) {
                     active_count = 1;
                 } else {
                     p += 0x40;
-                    st = (p[0xD4] >> 2) & 0x3F;
+                    st = (p[BB_CAR(0xD4)] >> 2) & 0x3F;
                     if (st == 1) {
                         active_count = 2;
-                    } else if ((u32) ((p[0x114] >> 2) & 0x3F) == 1) {
+                    } else if ((u32) ((p[BB_CAR(0x114)] >> 2) & 0x3F) == 1) {
                         active_count = 3;
                     }
                 }
@@ -3385,27 +3574,27 @@ void grBigBlue_801ECB50(Ground_GObj* gobj)
                 s32 left_count = 0;
                 s32 direction;
 
-                st = (bp[0xD4] >> 2) & 0x3F;
+                st = (bp[BB_CAR(0xD4)] >> 2) & 0x3F;
                 if (st == 7) {
                     right_count = 1;
                 } else if (st == 8) {
                     left_count = 1;
                 }
                 p = bp + 0x40;
-                st = (p[0xD4] >> 2) & 0x3F;
+                st = (p[BB_CAR(0xD4)] >> 2) & 0x3F;
                 if (st == 7) {
                     right_count++;
                 } else if (st == 8) {
                     left_count++;
                 }
                 p += 0x40;
-                st = (p[0xD4] >> 2) & 0x3F;
+                st = (p[BB_CAR(0xD4)] >> 2) & 0x3F;
                 if (st == 7) {
                     right_count++;
                 } else if (st == 8) {
                     left_count++;
                 }
-                st = (p[0x114] >> 2) & 0x3F;
+                st = (p[BB_CAR(0x114)] >> 2) & 0x3F;
                 if (st == 7) {
                     right_count++;
                 } else if (st == 8) {
@@ -3520,6 +3709,26 @@ void grBigBlue_801ECB50(Ground_GObj* gobj)
     }
 }
 
+#ifdef PORT
+// PORT: the car gobj's Ground, spelled as the fields this file reaches for.
+// The #else writes the padding in the console's bytes (`pad_0[0xC8]`,
+// `pad_CC[8]`), which puts `jobjs` and `lanes` at 0xC8 and 0xD4 there and
+// nowhere useful here: Ground.u starts at 256 rather than 196, and two
+// pointers inside grBigBlue_CarVars widen before `lanes`. Derived from the
+// real structure, the offsets are 0xC8 and 0xD4 on PowerPC and 264 and 284
+// here.
+typedef union grBigBlue_CarPhysics {
+    u8 raw[sizeof(Ground)];
+    struct grBigBlue_CarPhysics_data {
+        u8 pad_0[offsetof(Ground, u.bigblue.x0_u.car.collision_jobjs)];
+        HSD_JObj** jobjs;
+        u8 pad_CC[offsetof(Ground, u.bigblue.x0_u.car.lanes) -
+                  offsetof(Ground, u.bigblue.x0_u.car.collision_jobjs) -
+                  sizeof(HSD_JObj**)];
+        struct grBigBlue_CarLane lanes[4];
+    } data;
+} grBigBlue_CarPhysics;
+#else
 typedef union grBigBlue_CarPhysics {
     u8 raw[0x1D4];
     struct grBigBlue_CarPhysics_data {
@@ -3529,6 +3738,7 @@ typedef union grBigBlue_CarPhysics {
         struct grBigBlue_CarLane lanes[4];
     } data;
 } grBigBlue_CarPhysics;
+#endif
 
 void grBigBlue_801ED694(Ground_GObj* gobj, s32 lane)
 {
@@ -3563,7 +3773,11 @@ void grBigBlue_801ED694(Ground_GObj* gobj, s32 lane)
 
     {
         u16 hw = *(u16*) lane_flags;
+#if defined(PORT) || defined(LINT)
+        jobj = gp->data.jobjs[BB_LANE_SLOT(&gp->data.lanes[lane])];
+#else
         jobj = gp->data.jobjs[(hw >> 4) & 0x1F];
+#endif
     }
 
     f31_rot = HSD_JObjGetRotationZ(jobj);
@@ -3580,11 +3794,11 @@ void grBigBlue_801ED694(Ground_GObj* gobj, s32 lane)
             behind = 0;
 
             for (idx = 0, iter = gp->raw; idx < 4; idx++, iter += 0x40) {
-                u32 st = (iter[0xD4] >> 2) & 0x3F;
+                u32 st = (iter[BB_CAR(0xD4)] >> 2) & 0x3F;
                 if (st != 1 && st != 7 && st != 8) {
                     active++;
                     if (idx != lane &&
-                        *(f32*) (iter + 0xE0) < gp->data.lanes[lane].pos.x)
+                        *(f32*) (iter + BB_CAR(0xE0)) < gp->data.lanes[lane].pos.x)
                     {
                         behind++;
                     }
@@ -3748,7 +3962,7 @@ void grBigBlue_801ED694(Ground_GObj* gobj, s32 lane)
                 gp2 = (u8*) map_gobj->user_data;
                 HSD_ASSERT(3256, gp2);
                 gp->data.lanes[lane].pos.y +=
-                    *(f32*) (gp2 + 0xCC) - *(f32*) (gp2 + 0xD8);
+                    *(f32*) (gp2 + 0xCC) - *(f32*) (gp2 + BB_CAR(0xD8));
             }
         }
     } else {
@@ -3952,6 +4166,22 @@ s32 grBigBlue_801EDF44(Ground_GObj* gobj, s32 index)
     return result;
 }
 
+#ifdef PORT
+// PORT: the same overlay as grBigBlue_CarPhysics with the rank table named;
+// see the note there for why the padding is derived rather than written out.
+typedef union grBb_CarGround {
+    Ground ground;
+    struct grBb_CarGround_typed {
+        u8 pad_0[offsetof(Ground, u.bigblue.x0_u.car.collision_jobjs)];
+        HSD_JObj** jobjs;
+        u8* ranks;
+        u8 pad_D0[offsetof(Ground, u.bigblue.x0_u.car.lanes) -
+                  offsetof(Ground, u.bigblue.x0_u.car.ranks) - sizeof(u8*)];
+        struct grBigBlue_CarLane cars[4];
+    } typed;
+    u8 bytes[sizeof(Ground)];
+} grBb_CarGround;
+#else
 typedef union grBb_CarGround {
     Ground ground;
     struct grBb_CarGround_typed {
@@ -3963,6 +4193,7 @@ typedef union grBb_CarGround {
     } typed;
     u8 bytes[0x1D4];
 } grBb_CarGround;
+#endif
 
 static inline s32 grBigBlue_801EE398_sfx(void)
 {
@@ -3985,14 +4216,14 @@ static inline void grBigBlue_801EE398_inline(Ground* gp, s32 arg1, s32 arg2,
     case 1: {
         struct grBigBlue_CarLane* car = &gp->u.bigblue.x0_u.car.lanes[arg1];
 
-        HSD_JObjSetFlagsAll(gp->u.bigblue.x0_u.car
-                                .collision_jobjs[car->x0.x0_1.collision_slot],
-                            JOBJ_HIDDEN);
+        HSD_JObjSetFlagsAll(
+            gp->u.bigblue.x0_u.car.collision_jobjs[BB_LANE_SLOT(car)],
+            JOBJ_HIDDEN);
 
         if (gp->u.bigblue.x0_u.car.lanes[arg1].pos.x > 0.0f) {
-            gp->u.bigblue.x0_u.car.ranks[car->x0.x0_1.collision_slot] = 0;
+            gp->u.bigblue.x0_u.car.ranks[BB_LANE_SLOT(car)] = 0;
         } else {
-            gp->u.bigblue.x0_u.car.ranks[car->x0.x0_1.collision_slot] = 2;
+            gp->u.bigblue.x0_u.car.ranks[BB_LANE_SLOT(car)] = 2;
         }
         *result = 1;
         car->x0.x0.state = state_value4;
@@ -4052,8 +4283,7 @@ static inline void grBigBlue_801EE398_inline(Ground* gp, s32 arg1, s32 arg2,
                     }
                 }
 
-                gp->u.bigblue.x0_u.car.lanes[arg1].x0.x0_1.collision_slot =
-                    slot;
+                BB_LANE_SET_SLOT(&gp->u.bigblue.x0_u.car.lanes[arg1], slot);
                 gp->u.bigblue.x0_u.car.lanes[arg1].x0.x0.direction = 0;
 
                 gp->u.bigblue.x0_u.car.lanes[arg1].pos.x = pos->x;
@@ -4145,7 +4375,7 @@ static inline void grBigBlue_801EE398_inline(Ground* gp, s32 arg1, s32 arg2,
 
                 lanes = gp->u.bigblue.x0_u.car.lanes;
                 car_d4 = &gp->u.bigblue.x0_u.car.lanes[arg1];
-                lanes[arg1].x0.x0_1.collision_slot = slot;
+                BB_LANE_SET_SLOT(&lanes[arg1], slot);
                 gp->u.bigblue.x0_u.car.lanes[arg1].x0.x0.direction = 0;
 
                 gp->u.bigblue.x0_u.car.lanes[arg1].pos.x = pos->x;
@@ -4233,7 +4463,7 @@ bool grBigBlue_801EEF00(Ground_GObj* gobj, s32 index)
     offset = index << 6;
     gp = gobj->user_data;
 
-    switch ((*(volatile u8*) (gp->bytes + offset + 0xD4) >> 2) & 0x3F) {
+    switch ((*(volatile u8*) (gp->bytes + offset + BB_CAR(0xD4)) >> 2) & 0x3F) {
     case 1:
         return 0;
 
@@ -4382,9 +4612,9 @@ bool grBigBlue_801EEF00(Ground_GObj* gobj, s32 index)
     case 5:
     case 6: {
         u8* car = gp->bytes + offset;
-        f32* alpha = (f32*) (car + 0xEC);
+        f32* alpha = (f32*) (car + BB_CAR(0xEC));
 
-        *(f32*) (car + 0x100) = 0.0F;
+        *(f32*) (car + BB_CAR(0x100)) = 0.0F;
         *alpha += (1.0F / 60.0F);
         if (*alpha > 1.0F) {
             *alpha = 1.0F;
@@ -4447,7 +4677,7 @@ void grBigBlue_801EF424(Ground_GObj* gobj)
         changed = 0;
 
         for (i = 0, car_i = (u8*) gp; i < 4; i++, car_i += 0x40) {
-            if ((u32) ((car_i[0xD4] >> 2) & 0x3F) == 1U) {
+            if ((u32) ((car_i[BB_CAR(0xD4)] >> 2) & 0x3F) == 1U) {
                 continue;
             }
 
@@ -4456,11 +4686,11 @@ void grBigBlue_801EF424(Ground_GObj* gobj)
                     continue;
                 }
 
-                if ((u32) ((car_j[0xD4] >> 2) & 0x3F) == 1U) {
+                if ((u32) ((car_j[BB_CAR(0xD4)] >> 2) & 0x3F) == 1U) {
                     continue;
                 }
 
-                diff = *(f32*) (car_i + 0xE0) - *(f32*) (car_j + 0xE0);
+                diff = *(f32*) (car_i + BB_CAR(0xE0)) - *(f32*) (car_j + BB_CAR(0xE0));
 
                 if (diff < zero) {
                     absDiff = -diff;
@@ -4482,10 +4712,10 @@ void grBigBlue_801EF424(Ground_GObj* gobj)
                     changed = 1;
                     diff *= 0.5;
 
-                    *(f32*) (car_i + 0xDC) -= diff;
-                    *(f32*) (car_i + 0xE0) -= diff;
-                    *(f32*) (car_j + 0xDC) += diff;
-                    *(f32*) (car_j + 0xE0) += diff;
+                    *(f32*) (car_i + BB_CAR(0xDC)) -= diff;
+                    *(f32*) (car_i + BB_CAR(0xE0)) -= diff;
+                    *(f32*) (car_j + BB_CAR(0xDC)) += diff;
+                    *(f32*) (car_j + BB_CAR(0xE0)) += diff;
                 }
             }
         }
@@ -4528,9 +4758,16 @@ void fn_801EF60C(void* user_data, int joint_id, CollData* coll, int coll_x50,
     p = (u8*) gp;
 
     for (i = 0; i < 4; i++) {
+#if defined(PORT) || defined(LINT)
+        if ((s32) BB_LANE_SLOT((struct grBigBlue_CarLane*) (p +
+                                                           BB_CAR(0xD4))) ==
+            car_num)
+#else
         hw = *(u16*) (p + 0xD4);
-        if (((hw >> 4) & 0x1F) == car_num) {
-            *(f32*) (p + 0xF4) = -coll->x50 * params->x44;
+        if (((hw >> 4) & 0x1F) == car_num)
+#endif
+        {
+            *(f32*) (p + BB_CAR(0xF4)) = -coll->x50 * params->x44;
         }
         p += 0x40;
     }

@@ -911,11 +911,21 @@ void stageGObj2_OnInit(Ground_GObj* arg0)
     gp->u.icemt1.x0_b0 = false;
     sp14 = grIm_804DB58C;
     grIceMt_801F8CDC(arg0, (s16*) &sp14, 2, &gp->u.icemt1.x34[0]);
+#ifdef PORT
+    // PORT: gp+0x100 and gp+0x10E; see grIceMt_GObj1_GroundVars in
+    // gr/types.h.
+    grIceMt_801F91EC(arg0, gp->u.icemt1.rail[0],
+                     grIceMt_801FA500(arg0, jobj), -1, 0x25, 0x109, 0x27E,
+                     fn_801F9338);
+    grIceMt_801F91EC(arg0, gp->u.icemt1.rail[1], grIceMt_801FA500(arg0, jobj2),
+                     -1, 38, 265, 638, fn_801F9448);
+#else
     grIceMt_801F91EC(arg0, (s16*) ((u8*) gp + 0x100),
                      grIceMt_801FA500(arg0, jobj), -1, 0x25, 0x109, 0x27E,
                      fn_801F9338);
     grIceMt_801F91EC(arg0, &gp->u.icemt.x108[3], grIceMt_801FA500(arg0, jobj2),
                      -1, 38, 265, 638, fn_801F9448);
+#endif
 }
 
 bool stageGObj2_Callback1(Ground_GObj* param1)
@@ -926,8 +936,14 @@ bool stageGObj2_Callback1(Ground_GObj* param1)
 void stageGObj2_GObjProc(Ground_GObj* param1)
 {
     Ground* gp = GET_GROUND(param1);
+#ifdef PORT
+    // PORT: the same two records stageGObj2_OnInit() filled.
+    grIceMt_801F929C(param1, gp->u.icemt1.rail[0]);
+    grIceMt_801F929C(param1, gp->u.icemt1.rail[1]);
+#else
     grIceMt_801F929C(param1, &gp->u.icemt1.x34[2]);
     grIceMt_801F929C(param1, &gp->u.icemt.x108[3]);
+#endif
     grIceMt_801F98A8(param1);
     Ground_UpdateMapColl(param1);
 }
@@ -1038,8 +1054,14 @@ void stageGObj4_OnInit(Ground_GObj* arg0)
     sp14.x4 = grIm_804DB59C;
     grIceMt_801F8CDC(arg0, (s16*) &sp14, 4, &gp->u.icemt1.x34[0]);
     r = grIceMt_801FA500(arg0, jobj3);
+#ifdef PORT
+    // PORT: gp+0x108, this gobj's one record; see gr/types.h.
+    grIceMt_801F91EC(arg0, gp->u.icemt1.rail[0], grIceMt_801FA500(arg0, jobj2),
+                     r, 117, 265, 638, fn_801F9558);
+#else
     grIceMt_801F91EC(arg0, gp->u.icemt.x108, grIceMt_801FA500(arg0, jobj2), r,
                      117, 265, 638, fn_801F9558);
+#endif
 }
 
 bool stageGObj4_Callback1(Ground_GObj* param1)
@@ -1050,7 +1072,12 @@ bool stageGObj4_Callback1(Ground_GObj* param1)
 void stageGObj4_GObjProc(Ground_GObj* gobj)
 {
     Ground* gp = gobj->user_data;
+#ifdef PORT
+    // PORT: the record stageGObj4_OnInit() filled.
+    grIceMt_801F929C(gobj, gp->u.icemt1.rail[0]);
+#else
     grIceMt_801F929C(gobj, &gp->u.icemt1.x34[4]);
+#endif
     grIceMt_801F98A8(gobj);
     Ground_UpdateMapColl(gobj);
 }
@@ -1444,7 +1471,11 @@ void fn_801F9338(void* user_data, int joint_id, CollData* coll, int coll_x50,
     {
         HSD_GObj* gobj;
         Ground* gp = user_data;
+#ifdef PORT
+        s16* s = gp->u.icemt1.rail[0]; // gp+0x100, gobj 2
+#else
         s16* s = gp->u.icemt.x100;
+#endif
         if ((s32) coll->x34_flags.b1234 == 1 && s[0] == 0) {
             gobj = Ground_GetMapGObj(2);
             s[0] = 1;
@@ -1470,7 +1501,11 @@ void fn_801F9448(void* user_data, int joint_id, CollData* coll, int coll_x50,
     {
         HSD_GObj* gobj;
         Ground* gp = user_data;
+#ifdef PORT
+        s16* s = gp->u.icemt1.rail[1]; // gp+0x10E, gobj 2
+#else
         s16* s = &gp->u.icemt.x108[3];
+#endif
         if ((s32) coll->x34_flags.b1234 == 1 && s[0] == 0) {
             gobj = Ground_GetMapGObj(2);
             s[0] = 1;
@@ -1496,7 +1531,11 @@ void fn_801F9558(void* user_data, int joint_id, CollData* coll, int coll_x50,
     {
         HSD_GObj* gobj;
         Ground* gp = user_data;
+#ifdef PORT
+        s16* s = gp->u.icemt1.rail[0]; // gp+0x108, gobj 4
+#else
         s16* s = gp->u.icemt.x108;
+#endif
         if ((s32) coll->x34_flags.b1234 == 1 && s[0] == 0) {
             gobj = Ground_GetMapGObj(4);
             s[0] = 1;
@@ -1983,7 +2022,14 @@ void onJointCollision(void* user_data, int joint_id, CollData* coll,
         if (gobj != NULL) {
             gp2 = gobj->user_data;
             if (gp2 != NULL) {
+#ifdef PORT
+                // PORT: UnkFlagStruct's b4 is 0x08 on both targets; the flag
+                // it means is icemt10.x14_b4, which is 0x08 on the console
+                // and 0x10 here, so the cast sets x14_b3. Set by name.
+                gp2->u.icemt10.x14_b4 = 1;
+#else
                 ((UnkFlagStruct*) &gp2->u.icemt.x14)->x0.b4 = 1;
+#endif
             }
         }
     }

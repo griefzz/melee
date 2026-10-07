@@ -1,4 +1,7 @@
 #include "grizumi.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include "granime.h"
 #include "grdatfiles.h"
@@ -43,10 +46,19 @@ typedef struct IzumiReflection {
     HSD_ImageDesc* image;
 } IzumiReflection;
 
+#ifdef PORT
+// PORT: this is a Ground, and `x18` is `Ground.x18`: grIzumi_801CBE64()
+// casts a gobj's user_data to it and writes the same field on a sibling
+// gobj by name. The pad is the field's console offset, 0x18; here it is 40,
+// as three pointers above it widen, and the pad view puts the gobj over
+// `xC_callback`, which Ground_801C1D38() calls. Named as the real type.
+typedef Ground IzumiUnkCC;
+#else
 typedef struct IzumiUnkCC {
     u8 pad[0x18];
     HSD_GObj* x18;
 } IzumiUnkCC;
+#endif
 
 #define GET_REFLECTION(gobj) ((IzumiReflection*) HSD_GObjGetUserData(gobj))
 
@@ -281,12 +293,27 @@ void grIzumi_801CBE64(Ground_GObj* gobj)
     Ground* gp = GET_GROUND(gobj);
     HSD_JObj* jobj = GET_JOBJ(gobj);
     Ground_InitMapColl(jobj, gp->map_id);
+#ifdef PORT
+    // PORT: the fod_lagless hook. Lagless FoD patch 3,
+    // `04 grIzumi_801CBE64+0x38 <- nop`, drops this call.
+    if (!port_hook_fod_lagless())
+#endif
     grAnime_801C8138(gobj, gp->map_id, 0);
     gp->x11_flags.b012 = 1;
     gp->x10_flags.b5 = 1;
     gp->u.izumi.xD0 = Ground_801C3FA4(gobj, 1);
     gp->u.izumi.xD4 = Ground_801C3FA4(gobj, 2);
     gp->u.izumi.xC8 = grIzumi_801CCD98();
+#ifdef PORT
+    // PORT: Lagless FoD patch 4, `04 grIzumi_801CBE64+0x8C <- nop`, drops
+    // the `->image` load, so the lookup is handed the reflection gobj itself,
+    // finds nothing, and returns null. The code disables the reflection by
+    // making its own lookup fail; this says so directly. Patch 7 below keeps
+    // the null out of the render callback.
+    if (port_hook_fod_lagless()) {
+        tobj = NULL;
+    } else
+#endif
     tobj = grIzumi_801CD090(gobj, GET_REFLECTION(gp->u.izumi.xC8)->image);
     if (tobj != NULL) {
         tobj->src = 0;
@@ -298,6 +325,14 @@ void grIzumi_801CBE64(Ground_GObj* gobj)
     }
     gp->u.izumi.xC4 = tobj;
     gobj->render_cb = grIzumi_801CD220;
+#ifdef PORT
+    // PORT: Lagless FoD patch 5, `04 grIzumi_801CBE64+0xF0 <- nop`. The gobj
+    // this would create registers two think procs of its own (in ground.c),
+    // one of which runs HSD_JObjAnimAll() every frame, so it is a whole
+    // animated object a Slippi client does not have, and with Slippi's
+    // per-frame reseed anything it draws moves every later draw index.
+    if (!port_hook_fod_lagless())
+#endif
     grIzumi_801CCB18(gobj);
     {
         Vec3 x = { 0, 0, 0 };
@@ -325,7 +360,16 @@ void grIzumi_801CBE64(Ground_GObj* gobj)
             HSD_GObj* plat =
                 grIzumi_801CCBDC(yakumono_param->x0, &x38, 0, gp->u.izumi.xD0);
             Ground* platground = GET_GROUND(plat);
+#if defined(PORT) || defined(LINT)
+            // PORT: grIzumi_801CC358() reads this back as `u.izumi3.xDC`,
+            // the same address on PowerPC and four bytes away here: izumi2
+            // has two pointers above the field and izumi3 one, so the arms
+            // put it at 32 and 28. Written through the readers' arm, which
+            // is byte-identical on PowerPC (+0x18 in both).
+            platground->u.izumi3.xDC = yakumono_param->xC;
+#else
             platground->u.izumi2.xDC = yakumono_param->xC;
+#endif
             platground->x10_flags.b3 = 1;
             platground->x18 = gp->u.izumi.xC8;
         }
@@ -335,7 +379,12 @@ void grIzumi_801CBE64(Ground_GObj* gobj)
             HSD_GObj* plat =
                 grIzumi_801CCBDC(yakumono_param->x8, &x38, 1, gp->u.izumi.xD4);
             Ground* platground = GET_GROUND(plat);
+#if defined(PORT) || defined(LINT)
+            // PORT: as above, through the readers' arm.
+            platground->u.izumi3.xDC = yakumono_param->xC;
+#else
             platground->u.izumi2.xDC = yakumono_param->xC;
+#endif
             platground->x10_flags.b3 = 1;
             platground->x18 = gp->u.izumi.xC8;
         }
@@ -527,9 +576,24 @@ void grIzumi_801CC358(Ground_GObj* gobj)
             if (f < 0.01f) {
                 f = 0.01f;
             }
+#ifdef PORT
+            // PORT: Lagless FoD patch 2, `04 grIzumi_801CC358+0x554`, turns
+            // the fmadds that computes this into `fsub f0,f0,f0`, zero.
+            // Rendering only: nothing reads a JObj scale for collision, and
+            // the platform's height is u.izumi3.xCC's translation below.
+            HSD_JObjSetScaleX(jobj2, port_hook_fod_lagless() ? 0.0f
+                                                        : 0.5f * f + 0.5f);
+#else
             HSD_JObjSetScaleX(jobj2, 0.5f * f + 0.5f);
+#endif
             HSD_JObjSetScaleY(jobj2, f);
             HSD_JObjSetTranslateY(gp->u.izumi3.xCC, gp->u.izumi3.xD0);
+#ifdef PORT
+            // PORT: a side platform has been placed, at the instruction
+            // Slippi's SendFountainInfo.asm replaces (grIzumi_801CC358+0x640).
+            // --trace-fod and the .slp recorder read it. Reading only.
+            port_hook_fod_platform_placed(gp->u.izumi3.xCC, gp->u.izumi3.xD0);
+#endif
         }
     }
     mpLib_80055E9C(gp->u.izumi3.xC8);
@@ -684,7 +748,22 @@ HSD_CameraDescPerspective ReflectCObjDesc = {
 HSD_GObj* grIzumi_801CCD98(void)
 {
     HSD_GObj* gobj = GObj_Create(0x11, 0x12, 0);
+#ifdef PORT
+    HSD_CObj* cobj;
+    // PORT: Lagless FoD patch 8, `04 grIzumi_801CCD98+0x34 <- b +0xB4`,
+    // jumps from just after the GObj_Create() to the epilogue, so the
+    // reflection gobj is returned bare: no camera, no user data, no GX link,
+    // and no grIzumi_801CCEA0() every frame. That makes patch 6
+    // (`GObj_SetupGXLinkMaxSorted+0x70 <- nop`, which drops the
+    // GObj_GXReorder() inside the only call this function makes to it)
+    // redundant; Slippi ships both.
+    if (port_hook_fod_lagless()) {
+        return gobj;
+    }
+    cobj = lb_80013B14(&ReflectCObjDesc);
+#else
     HSD_CObj* cobj = lb_80013B14(&ReflectCObjDesc);
+#endif
     IzumiReflection* refl;
     UnkArchiveStruct* dat;
     HSD_GObjObject_80390A70(gobj, HSD_GObj_CameraKind, cobj);
@@ -820,9 +899,21 @@ HSD_TObj* grIzumi_801CD090(HSD_GObj* gobj, HSD_ImageDesc* image)
 void grIzumi_801CD220(HSD_GObj* gobj, intptr_t renderpass)
 {
     Ground* gp = GET_GROUND(gobj);
+#ifdef PORT
+    // PORT: Lagless FoD patch 7, `04 grIzumi_801CD220+0x30 <- nop`, drops
+    // the PSMTXCopy(), as patch 4 leaves tobj null and patch 8 leaves the
+    // gobj without user data. The console still executes both loads and
+    // discards them; here the whole block is skipped.
+    if (!port_hook_fod_lagless()) {
+        IzumiReflection* refl = HSD_GObjGetUserData(gp->u.izumi.xC8);
+        HSD_TObj* tobj = gp->u.izumi.xC4;
+        PSMTXCopy(refl->texture_matrix, tobj->mtx);
+    }
+#else
     IzumiReflection* refl = HSD_GObjGetUserData(gp->u.izumi.xC8);
     HSD_TObj* tobj = gp->u.izumi.xC4;
     PSMTXCopy(refl->texture_matrix, tobj->mtx);
+#endif
     grDisplay_801C5DB0(gobj, renderpass);
 }
 

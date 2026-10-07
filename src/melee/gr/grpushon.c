@@ -264,7 +264,14 @@ void grPushOn_802187A8(Ground_GObj* gobj)
     Ground* gp = GET_GROUND(gobj);
     HSD_LObj* lobj;
 
+#ifdef PORT
+    // PORT: the cast reads the head array at next_gx's offset, which is
+    // head[4] on the console, the light link lbShadow_8000F38C() walks, and
+    // head[3] here.
+    gp->u.pushon.gobj = HSD_GObjGXLinkHead[4];
+#else
     gp->u.pushon.gobj = ((HSD_GObj*) HSD_GObjGXLinkHead)->next_gx;
+#endif
     PAD_STACK(16);
     grPushOn_802190D0(gp->u.pushon.gobj);
     lobj = ((HSD_GObj*) gp->u.pushon.gobj)->hsd_obj;
@@ -578,9 +585,16 @@ void fn_802190A0(void* user_data, int joint_id, CollData* coll, int coll_x50,
                  mpLib_GroundEnum ground_kind, float delta_y)
 {
     Ground* gp = user_data;
+#ifdef PORT
+    // PORT: the byte read is x34_flags.b1234 (bits 6..3) in MWCC's
+    // most-significant-first bitfield layout; clang allocates the run from
+    // bit 0, so the shift reads 0 for a fighter and no door counts. By name.
+    if (coll->x34_flags.b1234 == 1 && (ground_kind - 1) <= 1U) {
+#else
     if (((*(u8*) &coll->x34_flags >> 3U) & 0xF) == 1 &&
         (ground_kind - 1) <= 1U)
     {
+#endif
         gp->u.map.xC4_b0 = true;
     }
 }
@@ -671,7 +685,13 @@ s32 fn_802192A4(void* arg0, HSD_GObj* gobj, s32* result)
             (scale * (-50.0f + grPushOn_803E7CCC[i * 3 + 2]) < sp14.y) &&
             (scale * grPushOn_803E7CCC[i * 3 + 2] > sp14.y))
         {
+#ifdef PORT
+            // PORT: `result` is the caller's lbColl_80008D30_arg1* (`desc` in
+            // ftColl_8007BAC0()); an s32 store sets only its low half.
+            *(lbColl_80008D30_arg1**) result = yakumono_param->x0;
+#else
             *result = (s32) yakumono_param->x0;
+#endif
             return 1;
         }
     }

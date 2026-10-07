@@ -7,6 +7,9 @@
 #include <melee/lb/lb_00F9.h>
 #include <melee/sc/types.h>
 #include <sysdolphin/baselib/jobj.h>
+#if defined(PORT) || defined(LINT)
+#include <stddef.h> // offsetof, for the record asserts below
+#endif
 
 typedef struct grFZeroCarEntry {
     s16 unk0;
@@ -54,6 +57,28 @@ static void order_sdata2(Vec3 temp)
     (void) 1.0f;
 }
 #endif
+#if defined(PORT) || defined(LINT)
+// PORT: setup_car_child() reads a map gobj's record through
+// DynamicModelDesc, whose four fields are the record's first four on both
+// targets; on the console the record is the 0x34 bytes every caller
+// multiplies by.
+_Static_assert(offsetof(struct UnkStageDat_x8_t, joint) ==
+                   offsetof(DynamicModelDesc, joint),
+               "DynamicModelDesc is the head of the stage record");
+_Static_assert(offsetof(struct UnkStageDat_x8_t, anims) ==
+                   offsetof(DynamicModelDesc, anims),
+               "DynamicModelDesc is the head of the stage record");
+_Static_assert(offsetof(struct UnkStageDat_x8_t, matanims) ==
+                   offsetof(DynamicModelDesc, matanims),
+               "DynamicModelDesc is the head of the stage record");
+_Static_assert(offsetof(struct UnkStageDat_x8_t, shapeanims) ==
+                   offsetof(DynamicModelDesc, shapeanims),
+               "DynamicModelDesc is the head of the stage record");
+#ifdef LINT
+_Static_assert(sizeof(struct UnkStageDat_x8_t) == 0x34,
+               "the callers' byte offset is the console's record stride");
+#endif
+#endif
 
 static inline void setup_car_child(HSD_JObj* parent, s16 ext_count, s32 offset,
                                    f32 scale_factor)
@@ -66,9 +91,19 @@ static inline void setup_car_child(HSD_JObj* parent, s16 ext_count, s32 offset,
 
     jobj = Ground_801C13D0(ext_count, 0);
     if (jobj != NULL) {
+#ifdef PORT
+        // PORT: `offset` is the record's console byte offset, count * 0x34 at
+        // every call site. The record holds pointers and is 0x68 bytes here,
+        // so the byte offset lands on element count / 2, another map gobj's
+        // record with no animations, and the car's children never animate.
+        // Indexed instead.
+        DynamicModelDesc* entry =
+            (DynamicModelDesc*) &archive->unk4->unk8[offset / 0x34];
+#else
         DynamicModelDesc* entry =
             (DynamicModelDesc*) ((u8*) offset +
                                  (uintptr_t) archive->unk4->unk8);
+#endif
         if (entry->anims != NULL) {
             if (entry->matanims != NULL) {
                 grAnime_801C6C0C(jobj, *entry->anims, *entry->matanims, NULL);
