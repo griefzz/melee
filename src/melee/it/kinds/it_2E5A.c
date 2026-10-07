@@ -335,6 +335,21 @@ static inline s32 it_802E6380_tier(Item_GObj* item_gobj, it_2E5A_Attrs* attr,
     // NOTE: tiers[0].ecb[9] should be tiers[1].threshold, but writing it
     // that way produces different asm offsets
     s32 off = 2;
+#ifdef PORT
+    // PORT: nine words past tiers[0].ecb is tiers[1].threshold on the
+    // console, as the note says, and tiers[1].matanim_joint here, where a
+    // tier entry is wider. Read as a threshold, a pointer's low half can be
+    // negative, and then the spawn loop in it_802E609C(), which subtracts
+    // the chosen tier's threshold from `vars->xC` until it is zero, never
+    // ends. Spelled as what the note says it is; see
+    // docs/design/verification.md, "Console byte offsets and sizes".
+    if (arg1->xC < attr->tiers[2].threshold) {
+        off = 1;
+        if (arg1->xC < attr->tiers[1].threshold) {
+            off = 0;
+        }
+    }
+#else
     s32* tier_thresholds = (s32*) &attr->tiers[0].ecb;
     if (arg1->xC < attr->tiers[2].threshold) {
         off = 1;
@@ -342,6 +357,7 @@ static inline s32 it_802E6380_tier(Item_GObj* item_gobj, it_2E5A_Attrs* attr,
             off = 0;
         }
     }
+#endif
     return off;
 }
 

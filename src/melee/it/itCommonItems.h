@@ -1904,8 +1904,18 @@ typedef struct ScopeBeamFloats {
 } ScopeBeamFloats;
 
 typedef struct ScopeBeamAttrs {
+#if defined(PORT) || defined(LINT)
+    // PORT: ten, not nine. it_80298ED0() (itsscopebeam.c) indexes this by
+    // the charge level, and its switch has a case 9, the fully charged shot.
+    // The twelve bytes the console declares as a pad are that record, and
+    // the transcoder converts only what the type declares; as a pad, a full
+    // charge's velocity, scale and lifetime read byte-swapped. Same layout on
+    // the console.
+    ScopeBeamFloats floats[10];
+#else
     ScopeBeamFloats floats[9];
     /* +6C */ u8 _pad[0x78 - 0x6C];
+#endif
     /* +78 */ f32 x78;
     /* +7C */ f32 x7C;
 } ScopeBeamAttrs;

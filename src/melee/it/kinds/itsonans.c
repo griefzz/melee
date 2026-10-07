@@ -1,4 +1,7 @@
 #include "itsonans.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include "inlines.h"
 #include <melee/it/inlines.h>
@@ -100,8 +103,16 @@ void it_802CD4FC(Item_GObj* gobj)
         HSD_JObjSetRotationZ(ip->xBBC_dynamicBoneTable->bones[4],
                              0.017453292f * ip->xDD4_itemVar.sonans.x64);
     }
+#ifdef PORT
+    // PORT: x68 decays by attrs->x20 a frame and goes negative. The
+    // console's (u32) makes that 0 damage and the host's 0xFFFFFFFF; see
+    // docs/design/verification.md, "Floats converted to unsigned".
+    it_80272460(&ip->x5D4_hitboxes[0].hit,
+                port_cvt_fp2unsigned(ip->xDD4_itemVar.sonans.x68), gobj);
+#else
     it_80272460(&ip->x5D4_hitboxes[0].hit, (u32) ip->xDD4_itemVar.sonans.x68,
                 gobj);
+#endif
     ip->xDD4_itemVar.sonans.x68 -= attrs->x20;
 }
 

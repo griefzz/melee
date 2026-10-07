@@ -1,4 +1,7 @@
 #include "ittools.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <placeholder.h>
 
@@ -258,7 +261,15 @@ void it_802EF548(Item_GObj* gobj)
     if (new_damage > (u32) attrs->xC) {
         new_damage = (u32) attrs->xC;
     }
+#ifdef PORT
+    // PORT: the damage is scaled by a multiplier from the item's file, and
+    // the console's __cvt_fp2unsigned makes a negative one 0; see
+    // docs/design/verification.md, "Floats converted to unsigned".
+    it_80272460(&ip->x5D4_hitboxes[0].hit, port_cvt_fp2unsigned(new_damage),
+                gobj);
+#else
     it_80272460(&ip->x5D4_hitboxes[0].hit, (u32) new_damage, gobj);
+#endif
 
     ip->x40_vel.x = dir * ((1.0f + (ip->x5D4_hitboxes[0].hit.damage - 10.0f)) *
                            attrs->motions[ip->xDD4_itemVar.tools.x0].x18);

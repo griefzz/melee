@@ -16,6 +16,50 @@
 static void it_2E6A_UnkMotion19_Phys(HSD_GObj* arg0);
 static bool it_802E7054(HSD_GObj* gobj);
 
+#ifdef PORT
+// PORT: ItemAttr's two flag bytes are declared in reverse here
+// (it/types.h), so the console's positional initializer would set is_heavy
+// 1 and hold_kind 0 where the console has 0 and 1, and x1_4 in place of
+// x1_5. Named, each value lands where the console's does; see
+// docs/design/verification.md, "Positional initializers".
+static ItemAttr it_803F8C08 = {
+    // 0x31080000
+    .x0_is_heavy = 0,
+    .x0_78 = 6,
+    .x0_hold_kind = 1,
+    .x1_1 = 0,
+    .x1_3 = 0,
+    .x1_4 = 0,
+    .x1_5 = 1,
+    .x1_67_cam_kind = 0,
+    .x1_8 = 0,
+    .x3 = 0,
+    .x4_throw_speed_mul = 0,
+    .x8 = 0,
+    .xC_spin_speed = 0,
+    .x10_fall_speed = 0,
+    .x14_fall_speed_max = 0,
+    .x18 = 0,
+    .x1C_damage_mul = 0,
+    .x20 = { 0, 0, 0, 0 },
+    .x30_unk = { 0, 0 },
+    .x38_grab_range = { 0, 0 },
+    .x40 = { 2.0f, 2.0f, 2.0f, 2.0f },
+    .x50 = 0,
+    .x54 = 0,
+    .x58 = 0,
+    .x5c = 0,
+    .x60_scale = 1.0f,
+    .destroy_gfx = -1,
+    .x68 = -1,
+    .x6C = 0x00083D60,
+    .x70 = 0x00083D60,
+    .x74 = 0x00083D60,
+    .destroy_sfx = 0x00083D60,
+    .x7C = 0x00083D60,
+    .x80 = 0x00083D60,
+};
+#else
 static ItemAttr it_803F8C08 = {
     // 0x31080000
     0,          // x0_is_heavy?
@@ -61,6 +105,7 @@ static ItemAttr it_803F8C08 = {
     0x00083D60, // x7C?
     0x00083D60, // x80?
 };
+#endif
 
 ItemStateTable it_803F8C8C[] = {
     { 0, NULL, it_2E6A_UnkMotion19_Phys, NULL },

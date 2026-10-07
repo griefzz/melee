@@ -575,7 +575,15 @@ f32 it_802A13EC(Item_GObj* gobj)
                 ip->xDD4_itemVar.linkboomerang.xF98, &pos);
             dy = pos.y - ip->pos.y;
             dx = pos.x - it_802A13EC_inline(ip);
+#ifdef PORT
+            // PORT: of this file's five lengths only this one is fused on the
+            // console: fmadds at it_802A13EC+0x50 adds dx*dx onto dy*dy in
+            // one rounding. The velocity lengths are a plain multiply and
+            // add. See docs/design/build.md, "Rounding and division".
+            ret = sqrtf(__builtin_fmaf(dx, dx, dy * dy));
+#else
             ret = HYPOT(dx, dy);
+#endif
             if (ip->xDD4_itemVar.linkboomerang.xF80 > 0.0f) {
                 ip->xDD4_itemVar.linkboomerang.xF80--;
             } else if (ip->xDD4_itemVar.linkboomerang.xF80 <= 0.0f) {

@@ -782,7 +782,18 @@ typedef struct itSeakChain_ItemVars {
 typedef struct itSeakChain_Attrs {
     /*  +0 */ s32 x0;
     /*  +4 */ f32 x4;
+#if defined(PORT) || defined(LINT)
+    // PORT: floats, not padding: PlSk.dat holds 1.2 and 0.8727 (50 degrees)
+    // here, and +4C/+50 below are read as floats through itChainSegment. The
+    // transcoder converts this struct field by field, so a u8 run is copied
+    // in the file's byte order and a float read over it is garbage. Same
+    // layout on PowerPC; LINT so both schema passes see the same fields. See
+    // docs/design/verification.md, "Item attribute views".
+    /*  +8 */ f32 x8;
+    /*  +C */ f32 xC;
+#else
     /*  +8 */ u8 pad_8[0x8];
+#endif
     /* +10 */ f32 x10;
     /* +14 */ f32 x14;
     /* +18 */ f32 x18;
@@ -798,7 +809,16 @@ typedef struct itSeakChain_Attrs {
     /* +40 */ f32 x40;
     /* +44 */ f32 x44;
     /* +48 */ f32 x48;
+#if defined(PORT) || defined(LINT)
+    // PORT: x50 is the chain's launch speed (3.0 in PlSk.dat):
+    // ftSk_SpecialS_CheckInitChain() (ftseakspecials.c) reads it as
+    // itChainSegment.x50 into the first link's velocity. Copied as bytes it
+    // reads 2.3e-41, and the chain leaves Sheik's hand at rest.
+    /* +4C */ f32 x4C;
+    /* +50 */ f32 x50;
+#else
     /* +4C */ u8 pad_4C[0x8];
+#endif
     /* +54 */ f32 x54;
     /* +58 */ f32 x58;
     /* +5C */ f32 x5C;
@@ -834,13 +854,34 @@ typedef struct itZeldaDinFireExplodeAttributes {
 
 typedef struct itUnk4_ItemVars {
     /*  +0 ip+DD4 */ u8 pad[0x18];
+#ifdef PORT
+    // PORT: the coin's pickup flags. it_2E5A.c writes them as
+    // it_2E5A.x18.x0.b0 and .b1, an UnkFlagStruct, which PORT declares from
+    // the other end so that b0 is 0x80 and b1 is 0x40, as on the console
+    // (gm/types.h); ft_8007C77C() reads them here. Declared b0 first, clang
+    // puts them on 0x01 and 0x02 and no fighter picks up a coin. Reversed,
+    // with the six bits the console leaves unused spelled out, each flag is
+    // on the bit it_2E5A writes. See docs/design/verification.md, "Two views
+    // of one bitfield".
+    /*  +18 ip+DEC */ u8 : 6;
+    /*  +18 ip+DEC */ u8 xDEC_b1 : 1;
+    /*  +18 ip+DEC */ u8 xDEC_b0 : 1;
+#else
     /*  +18 ip+DEC */ u8 xDEC_b0 : 1;
     /*  +18 ip+DEC */ u8 xDEC_b1 : 1;
+#endif
     /*  +1C ip+DF0 */ Fighter_x1614_t xDF0;
 } itUnk4_ItemVars;
 
 typedef struct itGamewatchchef_ItemVars {
+#ifdef PORT
+    // PORT: ip+DD4 is also gamewatch.attr, a pointer, eight bytes here.
+    // it_8027CE64() (itzako.c) stores it after it_802C84A0() sets x4, and
+    // with x0 four bytes wide its high half zeroes the sausage index.
+    /* +0 ip+DD4 */ void* x0;
+#else
     /* +0 ip+DD4 */ s32 x0;
+#endif
     /* +4 ip+DD8 */ s32 x4;
 } itGamewatchchef_ItemVars;
 
@@ -852,8 +893,35 @@ typedef struct itGamewatchchefAttrEntry {
     /* +10 */ f32 x10;
 } itGamewatchchefAttrEntry;
 
+#if defined(PORT) || defined(LINT)
+/// What every Game & Watch item's attributes begin with a pointer to
+/// (PlGw.dat, all ten kinds): the bones its two-layer draw hides and shows,
+/// as a count and a list of bone indices each.
+///
+/// PORT: it_8027CE64() (itzako.c) keeps the pointer as the item's vars and
+/// it_8026EECC() (itdraw.c) reads it as it_266F_ItemVars, whose first four
+/// fields have this layout on both targets. Named so the transcoder converts
+/// the pointer: as `void*` it converts to null, and every Game & Watch item
+/// crashes the frame it is drawn.
+typedef struct itGameWatchLcdParts {
+    /* +0 */ u16 x0;
+    /* +4 */ u8* x4;
+    /* +8 */ u16 x8;
+    /* +C */ u8* xC;
+} itGameWatchLcdParts;
+
+/// The attributes of a Game & Watch item whose code reads only their first
+/// word (`void** attr`, Item_AttachGameWatchArticle() in it/kinds/inlines.h).
+typedef struct itGameWatchAttributes {
+    /* +0 */ itGameWatchLcdParts* x0;
+} itGameWatchAttributes;
+#endif
 typedef struct itGamewatchchefAttributes {
+#if defined(PORT) || defined(LINT)
+    /* +0 */ itGameWatchLcdParts* x0;
+#else
     /* +0 */ void* x0;
+#endif
     /* +4 */ f32 x4;
     /* +8 */ f32 x8;
     /* +C */ f32 xC;
@@ -861,7 +929,11 @@ typedef struct itGamewatchchefAttributes {
 } itGamewatchchefAttributes;
 
 typedef struct itGamewatchAttributes {
+#if defined(PORT) || defined(LINT)
+    /* +0 */ itGameWatchLcdParts* x0;
+#else
     /* +0 */ void* x0;
+#endif
 } itGamewatchAttributes;
 
 typedef struct itHinoarashi_ItemVars {

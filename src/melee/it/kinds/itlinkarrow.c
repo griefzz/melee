@@ -24,6 +24,21 @@
 #include <sysdolphin/baselib/mtx.h>
 #include <sysdolphin/baselib/random.h>
 
+#ifdef PORT
+// PORT: MWCC contracted ten multiply-adds in this file: the stuck-arrow
+// wobble's `table[8] * rand + table[0]` (fmadds, twice each in
+// itLinkArrow_802A81C4() and itLinkarrow_UnkMotion4_Anim()), the launch
+// speed's `arg4 * ((x8 - x4) / arg5) + x4` and its xC/x10 twin
+// (itLinkArrow_802A850C()), and the shield-stuck orbit's
+// `xD4 * cosf(xD8) + xC8` and `xD4 * sinf(xD8) + xCC`
+// (itLinkarrow_UnkMotion2_Phys(), itLinkArrow_Logic98_HitShield()). LA_MADD
+// fuses them in the port and is the plain expression on the console; see
+// docs/design/build.md, "Rounding and division".
+#define LA_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#else
+#define LA_MADD(a, b, c) ((a) * (b) + (c))
+#endif
+
 #ifdef MUST_MATCH
 static void sdata2_order(void)
 {
@@ -126,7 +141,7 @@ s32 itLinkArrow_802A81C4(Item_GObj* gobj)
     case 6:
         rand = HSD_Randf();
         lookup_table = &it_803F6A84[ip->xDD4_itemVar.linkarrow.x9C];
-        temp = MTXDegToRad((lookup_table[8] * rand) + lookup_table[0]);
+        temp = MTXDegToRad(LA_MADD(lookup_table[8], rand, lookup_table[0]));
         z = ip->xDD4_itemVar.linkarrow.x94 + temp;
         break;
     case 1:
@@ -134,7 +149,7 @@ s32 itLinkArrow_802A81C4(Item_GObj* gobj)
     case 5:
         rand = HSD_Randf();
         lookup_table = &it_803F6A84[ip->xDD4_itemVar.linkarrow.x9C];
-        temp = MTXDegToRad((lookup_table[8] * rand) + lookup_table[0]);
+        temp = MTXDegToRad(LA_MADD(lookup_table[8], rand, lookup_table[0]));
         z = ip->xDD4_itemVar.linkarrow.x94 - temp;
         break;
     default:
@@ -215,7 +230,14 @@ HSD_GObj* it_802A83E0(f32 facing_dir, Fighter_GObj* arg1, Vec3* arg2,
 
 static inline HSD_JObj* itLinkArrow_802A850C_inline(HSD_Joint* joint)
 {
+#ifdef PORT
+    // PORT: the guard admits a NULL joint, which leaves `jobj` unset, and the
+    // result is stored into linkarrow.xB4[], which every consumer tests
+    // against NULL.
+    HSD_JObj* jobj = NULL;
+#else
     HSD_JObj* jobj;
+#endif
     if (joint != NULL) {
         jobj = HSD_JObjLoadJoint(joint);
     }
@@ -274,9 +296,9 @@ bool itLinkArrow_802A850C(Item_GObj* gobj, Vec3* arg1, Vec3* arg2, f32 arg3,
         ip->xDC8_word.flags.x14 = 0;
         it_8026B3A8(gobj);
         ip->xDD4_itemVar.linkarrow.xA8 =
-            (arg4 * ((attr->x8 - attr->x4) / arg5)) + attr->x4;
+            LA_MADD(arg4, (attr->x8 - attr->x4) / arg5, attr->x4);
         ip->xDD4_itemVar.linkarrow.xA4 =
-            (arg4 * ((attr->x10 - attr->xC) / arg5)) + attr->xC;
+            LA_MADD(arg4, (attr->x10 - attr->xC) / arg5, attr->xC);
         ip->facing_dir = ftLib_GetFacingDir(ip->xDD4_itemVar.linkarrow.xE0);
         HSD_JObjSetRotationY(jobj, M_PI_2 * ip->facing_dir);
         ip->pos = *arg1;
@@ -570,12 +592,12 @@ void itLinkarrow_UnkMotion2_Phys(HSD_GObj* gobj)
         (ftCo_80094098(item->xDD4_itemVar.linkarrow.xC4,
                        &item->xDD4_itemVar.linkarrow.xC8) *
          ftLib_GetModelScale(item->xDD4_itemVar.linkarrow.xC4));
-    item->pos.x = (item->xDD4_itemVar.linkarrow.xD4 *
-                   cosf(item->xDD4_itemVar.linkarrow.xD8)) +
-                  item->xDD4_itemVar.linkarrow.xC8;
-    item->pos.y = (item->xDD4_itemVar.linkarrow.xD4 *
-                   sinf(item->xDD4_itemVar.linkarrow.xD8)) +
-                  item->xDD4_itemVar.linkarrow.xCC;
+    item->pos.x = LA_MADD(item->xDD4_itemVar.linkarrow.xD4,
+                          cosf(item->xDD4_itemVar.linkarrow.xD8),
+                          item->xDD4_itemVar.linkarrow.xC8);
+    item->pos.y = LA_MADD(item->xDD4_itemVar.linkarrow.xD4,
+                          sinf(item->xDD4_itemVar.linkarrow.xD8),
+                          item->xDD4_itemVar.linkarrow.xCC);
     item->pos.z = 0.0f;
 }
 
@@ -675,16 +697,35 @@ bool itLinkarrow_UnkMotion4_Anim(Item_GObj* gobj)
     case 4:
     case 6:
         rand = HSD_Randf();
+#ifdef PORT
+        // PORT: word 23 past the state table it_803F6A28 is it_803F6A84 on
+        // the console (0x50 bytes of table, then the floats at 0x803F6A84).
+        // Here a table entry is eight words (anim_id, padding, three
+        // pointers), so the same words are zeros, halves of code addresses
+        // and at x9C == 1 an anim_id of -1, a NaN that puts the stuck arrow's
+        // rotation and hitbox everywhere. Read the floats by name, as
+        // itLinkArrow_802A81C4() does. See docs/design/verification.md,
+        // "Statics laid end to end".
+        temp_r3 = &it_803F6A84[ip->xDD4_itemVar.linkarrow.x9C];
+        var_f32 = MTXDegToRad(LA_MADD(temp_r3[8], rand, temp_r3[0]));
+#else
         temp_r3 = (f32*) &it_803F6A28 + ip->xDD4_itemVar.linkarrow.x9C;
-        var_f32 = MTXDegToRad((temp_r3[31] * rand) + temp_r3[23]);
+        var_f32 = MTXDegToRad(LA_MADD(temp_r3[31], rand, temp_r3[23]));
+#endif
         var_f31 = ip->xDD4_itemVar.linkarrow.x94 + var_f32;
         break;
     case 1:
     case 3:
     case 5:
         rand = HSD_Randf();
+#ifdef PORT
+        // PORT: as above.
+        temp_r3 = &it_803F6A84[ip->xDD4_itemVar.linkarrow.x9C];
+        var_f32 = MTXDegToRad(LA_MADD(temp_r3[8], rand, temp_r3[0]));
+#else
         temp_r3 = (f32*) &it_803F6A28 + ip->xDD4_itemVar.linkarrow.x9C;
-        var_f32 = MTXDegToRad((temp_r3[31] * rand) + temp_r3[23]);
+        var_f32 = MTXDegToRad(LA_MADD(temp_r3[31], rand, temp_r3[23]));
+#endif
         var_f31 = ip->xDD4_itemVar.linkarrow.x94 - var_f32;
         break;
     default:
@@ -805,12 +846,12 @@ bool itLinkArrow_Logic98_HitShield(Item_GObj* gobj)
                     atan2f(half_y - ip->xDD4_itemVar.linkarrow.xCC,
                            half_x - ip->xDD4_itemVar.linkarrow.xC8);
             }
-            ip->pos.x = ip->xDD4_itemVar.linkarrow.xD4 *
-                            cosf(ip->xDD4_itemVar.linkarrow.xD8) +
-                        ip->xDD4_itemVar.linkarrow.xC8;
-            ip->pos.y = ip->xDD4_itemVar.linkarrow.xD4 *
-                            sinf(ip->xDD4_itemVar.linkarrow.xD8) +
-                        ip->xDD4_itemVar.linkarrow.xCC;
+            ip->pos.x = LA_MADD(ip->xDD4_itemVar.linkarrow.xD4,
+                                cosf(ip->xDD4_itemVar.linkarrow.xD8),
+                                ip->xDD4_itemVar.linkarrow.xC8);
+            ip->pos.y = LA_MADD(ip->xDD4_itemVar.linkarrow.xD4,
+                                sinf(ip->xDD4_itemVar.linkarrow.xD8),
+                                ip->xDD4_itemVar.linkarrow.xCC);
             ip->pos.z = 0.0f;
         } else {
             return true;

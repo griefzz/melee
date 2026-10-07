@@ -507,7 +507,15 @@ static inline float itzako_sqrtf(float x)
 
 static inline float return_sqrt_value3(Vec3* v)
 {
+#ifdef PORT
+    // PORT: inlined with a == b, product_xyz is a sum of squares of memory,
+    // which MWCC leaves unfused (it_8027C8D0()). Written out, a contracting
+    // build sees the squares and does the same; see docs/design/build.md,
+    // "Rounding and division".
+    return itzako_sqrtf(v->x * v->x + v->y * v->y + v->z * v->z);
+#else
     return itzako_sqrtf(product_xyz(v, v));
+#endif
 }
 
 void it_8027C8D0(Vec3* arg0, Vec3* arg1, f32 arg8)

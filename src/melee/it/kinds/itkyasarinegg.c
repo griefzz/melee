@@ -134,7 +134,15 @@ void it_802EFD84(Item_GObj* gobj)
 
 bool itKyasarinegg_UnkMotion4_Anim(Item_GObj* gobj)
 {
+#ifdef PORT
+    // PORT: the decomp has no `return` here; the console's bare `bl` leaves
+    // the callee's r3. This is the egg's motion-state-4 `animated`
+    // predicate, and Item_80269528() (it/item.c) destroys the item when it
+    // returns true.
+    return it_802751D8(gobj);
+#else
     it_802751D8(gobj);
+#endif
 }
 
 static inline bool it_damage_inline(Item_GObj* gobj)

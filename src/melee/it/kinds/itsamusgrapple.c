@@ -37,6 +37,25 @@
 #include <sysdolphin/baselib/jobj.h>
 #include <sysdolphin/baselib/random.h>
 
+#ifdef PORT
+// PORT: MWCC contracted 86 multiply-adds in this file: the links pulled to
+// the rope's length, dir * x38 + anchor and dir * x3C + anchor, per axis
+// (GS_MADD); the chain's random sway, -(0.6 * rand - vy) and
+// 0.6 * rand + vy, in samus_grapple_calc_grav and its 1.0 twin
+// it_802B9328_grav (GS_NMSUB, GS_MADD); the attributes' scale lerp in
+// it_802B75FC(); and the links' horizontal damping, v += 0.12 * d in double,
+// in it_802BA194(). The lengths are it_802A3C98()'s, which is called rather
+// than inlined and not fused (itlinkhookshot.c). Each macro is the plain
+// expression on the console; see docs/design/build.md, "Rounding and
+// division".
+#define GS_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#define GS_NMSUB(a, b, c) (-__builtin_fmaf((a), (b), -(c)))
+#define GS_MADD_D(a, b, c) __builtin_fma((a), (b), (c))
+#else
+#define GS_MADD(a, b, c) ((a) * (b) + (c))
+#define GS_NMSUB(a, b, c) (-((a) * (b) - (c)))
+#endif
+
 ItemStateTable it_803F73A8[] = {
     { -1, NULL, itSamusgrapple_UnkMotion0_Phys, NULL },
     { -1, NULL, itSamusgrapple_UnkMotion1_Phys, NULL },
@@ -49,6 +68,39 @@ ItemStateTable it_803F73A8[] = {
     { -1, NULL, itSamusgrapple_UnkMotion8_Phys, NULL },
 };
 
+#ifdef PORT
+// PORT: spawn_hitbox_0..4 are declared in reverse here (lb/types.h), so the
+// console's positional initializer would put each value at the other end of
+// its word: damage 11, size 0, angle 0, element 1 and no hit_grounded.
+// Named, each value lands where the console's does; see
+// docs/design/verification.md, "Positional initializers".
+const itSamusGrapple_Hitbox it_803B8660 = {
+    { .opcode = 11,
+      .id = 0,
+      .hit_group = 0,
+      .only_hit_grabbed = 0,
+      .bone = 139,
+      .use_common_bone_ids = 0,
+      .damage = 0 },
+    { .size = 1200, .z_offset = 0 },
+    { .y_offset = 0, .x_offset = 0 },
+    { .angle = 361,
+      .knockback_growth = 100,
+      .weight_set_knockback = 0,
+      .item_hit_interaction = 1,
+      .ignore_thrown_fighters = 0,
+      .ignore_fighter_scale = 0,
+      .clank = 1,
+      .rebound = 0 },
+    { .base_knockback = 0,
+      .element = 8,
+      .shield_damage = 0,
+      .hit_sfx_severity = 1,
+      .hit_sfx_kind = 2,
+      .hit_grounded = 1,
+      .hit_aerial = 0 },
+};
+#else
 const itSamusGrapple_Hitbox it_803B8660 = {
     { 11, 0, 0, 0, 139, 0, 0 },
     { 1200, 0 },
@@ -56,6 +108,7 @@ const itSamusGrapple_Hitbox it_803B8660 = {
     { 361, 100, 0, 1, 0, 0, 1, 0 },
     { 0, 8, 0, 1, 2, 1, 0 },
 };
+#endif
 
 const Vec3 it_803B8674 = { 0.0f, 0.0f, 0.0f };
 
@@ -86,9 +139,9 @@ static inline f32 samus_grapple_calc_grav(f32 vel_y)
 {
     if (HSD_Randf() > 0.9) {
         if (vel_y < 0.0) {
-            return -((0.6f * HSD_Randf()) - vel_y);
+            return GS_NMSUB(0.6f, HSD_Randf(), vel_y);
         } else {
-            return (0.6f * HSD_Randf()) + vel_y;
+            return GS_MADD(0.6f, HSD_Randf(), vel_y);
         }
     } else {
         return 0.0f;
@@ -184,8 +237,16 @@ void it_802B7160(Fighter_GObj* gobj, itSamusGrapple_HitboxData* data)
             hitbox->jobj = fp->parts[bone].joint;
         }
     }
+#ifdef PORT
+    // PORT: the console reads `damage`, the word's low ten bits, through
+    // the halfword at bytes 2-3, which is the word's top half here. Read it
+    // by name.
+    (void) damage;
+    damage_arg = data->create_hitbox.create_hitbox_0.damage;
+#else
     damage_arg = *damage;
     damage_arg &= 0x3FF;
+#endif
     ftColl_8007ABD0(hitbox, damage_arg, gobj);
     hitbox->scale = data->create_hitbox.create_hitbox_1.size * 0.003906f;
     hitbox->b_offset.x =
@@ -195,15 +256,32 @@ void it_802B7160(Fighter_GObj* gobj, itSamusGrapple_HitboxData* data)
     hitbox->b_offset.z =
         data->create_hitbox.create_hitbox_2.x_offset * 0.003906f;
     ftColl_8007AC9C(hitbox, data->create_hitbox.create_hitbox_3.angle, gobj);
+#ifdef PORT
+    // PORT: no byte-3 view of the word; see the create_hitbox_4 reads below.
+#else
     hitbox_flags = (struct samus_grapple_hitbox_flags*) &data->create_hitbox
                        .create_hitbox_4 +
                    3;
+#endif
     hitbox->x24 = data->create_hitbox.create_hitbox_3.knockback_growth;
     hitbox->x28 = data->create_hitbox.create_hitbox_3.weight_set_knockback;
     hitbox->x43_b0 = data->create_hitbox.create_hitbox_3.item_hit_interaction;
     hitbox->x43_b1 = data->create_hitbox.create_hitbox_3.ignore_fighter_scale;
     hitbox->x40_b0 = data->create_hitbox.create_hitbox_3.clank;
     hitbox->x40_b1 = data->create_hitbox.create_hitbox_3.rebound;
+#ifdef PORT
+    // PORT: hit_grounded is bit 1 of the word's byte 3 on the console, which
+    // reads it through samus_grapple_hitbox_flags; here byte 3 holds
+    // base_knockback. Every field of the word is read by name instead.
+    hitbox->x2C = data->create_hitbox.create_hitbox_4.base_knockback;
+    hitbox->element = data->create_hitbox.create_hitbox_4.element;
+    hitbox->x34 = data->create_hitbox.create_hitbox_4.shield_damage;
+    hitbox->sfx_severity =
+        data->create_hitbox.create_hitbox_4.hit_sfx_severity;
+    hitbox->sfx_kind = data->create_hitbox.create_hitbox_4.hit_sfx_kind;
+    hitbox->x40_b2 = data->create_hitbox.create_hitbox_4.hit_aerial;
+    hitbox->x40_b3 = data->create_hitbox.create_hitbox_4.hit_grounded;
+#else
     hitbox->x2C =
         ((struct spawn_hitbox_4*) (hitbox_flags - 3))->base_knockback;
     hitbox->element = ((struct spawn_hitbox_4*) (hitbox_flags - 3))->element;
@@ -214,6 +292,7 @@ void it_802B7160(Fighter_GObj* gobj, itSamusGrapple_HitboxData* data)
         ((struct spawn_hitbox_4*) (hitbox_flags - 3))->hit_sfx_kind;
     hitbox->x40_b2 = ((struct spawn_hitbox_4*) (hitbox_flags - 3))->hit_aerial;
     hitbox->x40_b3 = hitbox_flags->hit_grounded;
+#endif
     hitbox->x42_b5 = 1;
     hitbox->x42_b7 = 1;
     hitbox->x41_b4 = 0;
@@ -355,8 +434,8 @@ HSD_JObj* it_802B75FC(Item* ip, HSD_JObj* jobj_arg, s32 arg2, f32 scale)
     attrs->x58 = attrs->x30 * scale;
 
     if (scale > 1.0) {
-        temp = (attrs->x8 * (attrs->xC * attrs->x38)) +
-               ((1.0f - attrs->x8) * (attrs->xC * attrs->x10));
+        temp = GS_MADD(attrs->x8, attrs->xC * attrs->x38,
+                       (1.0f - attrs->x8) * (attrs->xC * attrs->x10));
     } else {
         temp = attrs->xC * attrs->x38;
     }
@@ -971,9 +1050,9 @@ void it_802B900C(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
     f32 d;
 
     it_802A3C98(&link->pos, pos, &dir);
-    link->pos.x = (dir.x * dist) + pos->x;
-    link->pos.y = (dir.y * dist) + pos->y;
-    link->pos.z = (dir.z * dist) + pos->z;
+    link->pos.x = GS_MADD(dir.x, dist, pos->x);
+    link->pos.y = GS_MADD(dir.y, dist, pos->y);
+    link->pos.z = GS_MADD(dir.z, dist, pos->z);
 
     while (prev != NULL) {
         prev->vel.y -= samus_grapple_calc_grav(prev->vel.y);
@@ -982,13 +1061,13 @@ void it_802B900C(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
 
         d = it_802A3C98(&prev->pos, &link->pos, &dir);
         if (d > attrs->x38) {
-            prev->pos.x = (dir.x * attrs->x38) + link->pos.x;
-            prev->pos.y = (dir.y * attrs->x38) + link->pos.y;
-            prev->pos.z = (dir.z * attrs->x38) + link->pos.z;
+            prev->pos.x = GS_MADD(dir.x, attrs->x38, link->pos.x);
+            prev->pos.y = GS_MADD(dir.y, attrs->x38, link->pos.y);
+            prev->pos.z = GS_MADD(dir.z, attrs->x38, link->pos.z);
         } else if (d < attrs->x3C) {
-            prev->pos.x = (dir.x * attrs->x3C) + link->pos.x;
-            prev->pos.y = (dir.y * attrs->x3C) + link->pos.y;
-            prev->pos.z = (dir.z * attrs->x3C) + link->pos.z;
+            prev->pos.x = GS_MADD(dir.x, attrs->x3C, link->pos.x);
+            prev->pos.y = GS_MADD(dir.y, attrs->x3C, link->pos.y);
+            prev->pos.z = GS_MADD(dir.z, attrs->x3C, link->pos.z);
         }
 
         link = prev;
@@ -1005,9 +1084,9 @@ void it_802B91C4(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
     f32 d;
 
     it_802A3C98(&link->pos, pos, &dir);
-    link->pos.x = (dir.x * dist) + pos->x;
-    link->pos.y = (dir.y * dist) + pos->y;
-    link->pos.z = (dir.z * dist) + pos->z;
+    link->pos.x = GS_MADD(dir.x, dist, pos->x);
+    link->pos.y = GS_MADD(dir.y, dist, pos->y);
+    link->pos.z = GS_MADD(dir.z, dist, pos->z);
 
     while (prev != NULL) {
         prev->vel.y -= attrs->x44;
@@ -1016,13 +1095,13 @@ void it_802B91C4(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
 
         d = it_802A3C98(&prev->pos, &link->pos, &dir);
         if (d > attrs->x38) {
-            prev->pos.x = (dir.x * attrs->x38) + link->pos.x;
-            prev->pos.y = (dir.y * attrs->x38) + link->pos.y;
-            prev->pos.z = (dir.z * attrs->x38) + link->pos.z;
+            prev->pos.x = GS_MADD(dir.x, attrs->x38, link->pos.x);
+            prev->pos.y = GS_MADD(dir.y, attrs->x38, link->pos.y);
+            prev->pos.z = GS_MADD(dir.z, attrs->x38, link->pos.z);
         } else if (d < attrs->x3C) {
-            prev->pos.x = (dir.x * attrs->x3C) + link->pos.x;
-            prev->pos.y = (dir.y * attrs->x3C) + link->pos.y;
-            prev->pos.z = (dir.z * attrs->x3C) + link->pos.z;
+            prev->pos.x = GS_MADD(dir.x, attrs->x3C, link->pos.x);
+            prev->pos.y = GS_MADD(dir.y, attrs->x3C, link->pos.y);
+            prev->pos.z = GS_MADD(dir.z, attrs->x3C, link->pos.z);
         }
 
         link = prev;
@@ -1049,9 +1128,9 @@ static inline f32 it_802B9328_grav(f32 vely)
 
     if (HSD_Randf() > 0.9) {
         if (vely < 0.0) {
-            return -((one * HSD_Randf()) - vely);
+            return GS_NMSUB(one, HSD_Randf(), vely);
         } else {
-            return (one * HSD_Randf()) + vely;
+            return GS_MADD(one, HSD_Randf(), vely);
         }
     } else {
         return 0.0f;
@@ -1151,20 +1230,20 @@ s32 it_802B9328(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
             next->pos.y += next->vel.y;
             d = it_802A3C98(&next->pos, &cur->pos, &dir);
             if (d > attrs->x38) {
-                next->pos.x = dir.x * attrs->x38 + cur->pos.x;
-                next->pos.y = dir.y * attrs->x38 + cur->pos.y;
-                next->pos.z = dir.z * attrs->x38 + cur->pos.z;
+                next->pos.x = GS_MADD(dir.x, attrs->x38, cur->pos.x);
+                next->pos.y = GS_MADD(dir.y, attrs->x38, cur->pos.y);
+                next->pos.z = GS_MADD(dir.z, attrs->x38, cur->pos.z);
             } else if (d < attrs->x3C) {
-                next->pos.x = dir.x * attrs->x3C + cur->pos.x;
-                next->pos.y = dir.y * attrs->x3C + cur->pos.y;
-                next->pos.z = dir.z * attrs->x3C + cur->pos.z;
+                next->pos.x = GS_MADD(dir.x, attrs->x3C, cur->pos.x);
+                next->pos.y = GS_MADD(dir.y, attrs->x3C, cur->pos.y);
+                next->pos.z = GS_MADD(dir.z, attrs->x3C, cur->pos.z);
             }
             it_802A43EC(next);
         } else {
             if (it_802A3C98(pos, &cur->pos, &dir) > attrs->x38) {
-                next->pos.x = dir.x * attrs->x38 + cur->pos.x;
-                next->pos.y = dir.y * attrs->x38 + cur->pos.y;
-                next->pos.z = dir.z * attrs->x38 + cur->pos.z;
+                next->pos.x = GS_MADD(dir.x, attrs->x38, cur->pos.x);
+                next->pos.y = GS_MADD(dir.y, attrs->x38, cur->pos.y);
+                next->pos.z = GS_MADD(dir.z, attrs->x38, cur->pos.z);
                 next->x2C_b0 = 1;
                 it_802A43B8(next);
             } else {
@@ -1231,20 +1310,20 @@ s32 it_802B99A0(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
             it_802A4420(next);
             d = it_802A3C98(&next->pos, &cur->pos, &dir);
             if (d > attrs->x38) {
-                next->pos.x = (dir.x * attrs->x38) + cur->pos.x;
-                next->pos.y = (dir.y * attrs->x38) + cur->pos.y;
-                next->pos.z = (dir.z * attrs->x38) + cur->pos.z;
+                next->pos.x = GS_MADD(dir.x, attrs->x38, cur->pos.x);
+                next->pos.y = GS_MADD(dir.y, attrs->x38, cur->pos.y);
+                next->pos.z = GS_MADD(dir.z, attrs->x38, cur->pos.z);
             } else if (d < attrs->x3C) {
-                next->pos.x = (dir.x * attrs->x3C) + cur->pos.x;
-                next->pos.y = (dir.y * attrs->x3C) + cur->pos.y;
-                next->pos.z = (dir.z * attrs->x3C) + cur->pos.z;
+                next->pos.x = GS_MADD(dir.x, attrs->x3C, cur->pos.x);
+                next->pos.y = GS_MADD(dir.y, attrs->x3C, cur->pos.y);
+                next->pos.z = GS_MADD(dir.z, attrs->x3C, cur->pos.z);
             }
             it_802A43EC(next);
         } else {
             if (it_802A3C98(pos, &cur->pos, &dir) > attrs->x38) {
-                next->pos.x = (dir.x * attrs->x38) + cur->pos.x;
-                next->pos.y = (dir.y * attrs->x38) + cur->pos.y;
-                next->pos.z = (dir.z * attrs->x38) + cur->pos.z;
+                next->pos.x = GS_MADD(dir.x, attrs->x38, cur->pos.x);
+                next->pos.y = GS_MADD(dir.y, attrs->x38, cur->pos.y);
+                next->pos.z = GS_MADD(dir.z, attrs->x38, cur->pos.z);
                 next->x2C_b0 = 1;
                 it_802A43B8(next);
             } else {
@@ -1294,9 +1373,9 @@ void it_802B9CE8(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
     it_802A4420(link);
     d = it_802A3C98(&link->pos, pos, &dir);
     if (d > attrs->x38) {
-        link->pos.x = (dir.x * attrs->x38) + pos->x;
-        link->pos.y = (dir.y * attrs->x38) + pos->y;
-        link->pos.z = (dir.z * attrs->x38) + pos->z;
+        link->pos.x = GS_MADD(dir.x, attrs->x38, pos->x);
+        link->pos.y = GS_MADD(dir.y, attrs->x38, pos->y);
+        link->pos.z = GS_MADD(dir.z, attrs->x38, pos->z);
     }
     while (prev != NULL) {
         prev->vel.y -= samus_grapple_calc_grav(prev->vel.y);
@@ -1304,13 +1383,13 @@ void it_802B9CE8(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
         d = it_802A3C98(&prev->pos, &link->pos, &dir);
         dir_ptr = &dir;
         if (d > attrs->x38) {
-            prev->pos.x = (dir_ptr->x * attrs->x38) + link->pos.x;
-            prev->pos.y = (dir_ptr->y * attrs->x38) + link->pos.y;
-            prev->pos.z = (dir_ptr->z * attrs->x38) + link->pos.z;
+            prev->pos.x = GS_MADD(dir_ptr->x, attrs->x38, link->pos.x);
+            prev->pos.y = GS_MADD(dir_ptr->y, attrs->x38, link->pos.y);
+            prev->pos.z = GS_MADD(dir_ptr->z, attrs->x38, link->pos.z);
         } else if (d < attrs->x3C) {
-            prev->pos.x = (dir_ptr->x * attrs->x3C) + link->pos.x;
-            prev->pos.y = (dir_ptr->y * attrs->x3C) + link->pos.y;
-            prev->pos.z = (dir_ptr->z * attrs->x3C) + link->pos.z;
+            prev->pos.x = GS_MADD(dir_ptr->x, attrs->x3C, link->pos.x);
+            prev->pos.y = GS_MADD(dir_ptr->y, attrs->x3C, link->pos.y);
+            prev->pos.z = GS_MADD(dir_ptr->z, attrs->x3C, link->pos.z);
         }
         link = prev;
         prev = prev->prev;
@@ -1341,17 +1420,17 @@ bool it_802B9FD4(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs)
             it_802A4420(next);
             if (it_802A3C98(&next->pos, &cur->pos, &dir) > attrs->x38) {
                 dir_ptr = &dir;
-                next->pos.x = (dir_ptr->x * attrs->x38) + cur->pos.x;
-                next->pos.y = (dir_ptr->y * attrs->x38) + cur->pos.y;
-                next->pos.z = (dir_ptr->z * attrs->x38) + cur->pos.z;
+                next->pos.x = GS_MADD(dir_ptr->x, attrs->x38, cur->pos.x);
+                next->pos.y = GS_MADD(dir_ptr->y, attrs->x38, cur->pos.y);
+                next->pos.z = GS_MADD(dir_ptr->z, attrs->x38, cur->pos.z);
             }
             it_802A43EC(next);
         } else {
             if (it_802A3C98(pos, &cur->pos, &dir) > attrs->x38) {
                 dir_ptr = &dir;
-                next->pos.x = (dir_ptr->x * attrs->x38) + cur->pos.x;
-                next->pos.y = (dir_ptr->y * attrs->x38) + cur->pos.y;
-                next->pos.z = (dir_ptr->z * attrs->x38) + cur->pos.z;
+                next->pos.x = GS_MADD(dir_ptr->x, attrs->x38, cur->pos.x);
+                next->pos.y = GS_MADD(dir_ptr->y, attrs->x38, cur->pos.y);
+                next->pos.z = GS_MADD(dir_ptr->z, attrs->x38, cur->pos.z);
                 next->x2C_b0 = 1;
                 it_802A43B8(next);
             } else {
@@ -1409,8 +1488,13 @@ bool it_802BA194(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
         f32 dx = iter->coll_data.cur_pos.x - iter->coll_data.last_pos.x;
         f32 dz = iter->coll_data.cur_pos.z - iter->coll_data.last_pos.z;
         remaining = dz - iter->vel.z;
+#ifdef PORT
+        iter->vel.x = GS_MADD_D(0.12, dx - iter->vel.x, iter->vel.x);
+        iter->vel.z = GS_MADD_D(0.12, remaining, iter->vel.z);
+#else
         iter->vel.x += 0.12 * (dx - iter->vel.x);
         iter->vel.z += 0.12 * remaining;
+#endif
         iter = iter->prev;
     }
     return result;
@@ -1439,7 +1523,16 @@ bool it_802BA3BC(ItemLink* tail, ItemLink* head, Vec3* pos,
 {
     u8 _pad[8];
     Vec3 dir;
+#ifdef PORT
+    // PORT: the pull loop below reads dir_ptr one line before it first
+    // assigns it. MWCC folded it to &dir (the console loads dir.x straight
+    // from its stack slot, lfs f1, 0x28(r1) at it_802BA3BC+0x14C), so on the
+    // console the read is never of an uninitialised pointer; here it would
+    // be.
+    Vec3* dir_ptr = &dir;
+#else
     Vec3* dir_ptr;
+#endif
     Vec3 saved_pos;
     ItemLink* link;
     ItemLink* next_tail;
@@ -1480,10 +1573,10 @@ bool it_802BA3BC(ItemLink* tail, ItemLink* head, Vec3* pos,
     while (link != NULL && link->x2C_b0) {
         count++;
         if (it_802A3C98(&link->pos, &head->pos, &dir) > attrs->x38) {
-            link->pos.x = (dir_ptr->x * attrs->x38) + head->pos.x;
+            link->pos.x = GS_MADD(dir_ptr->x, attrs->x38, head->pos.x);
             dir_ptr = &dir;
-            link->pos.y = (dir_ptr->y * attrs->x38) + head->pos.y;
-            link->pos.z = (dir_ptr->z * attrs->x38) + head->pos.z;
+            link->pos.y = GS_MADD(dir_ptr->y, attrs->x38, head->pos.y);
+            link->pos.z = GS_MADD(dir_ptr->z, attrs->x38, head->pos.z);
         }
         head = link;
         link = head->next;
@@ -1491,9 +1584,9 @@ bool it_802BA3BC(ItemLink* tail, ItemLink* head, Vec3* pos,
 
     if (it_802A3C98(pos, &head->pos, &dir) > attrs->x38) {
         dir_ptr = &dir;
-        pos->x = (dir_ptr->x * attrs->x38) + head->pos.x;
-        pos->y = (dir_ptr->y * attrs->x38) + head->pos.y;
-        pos->z = (dir_ptr->z * attrs->x38) + head->pos.z;
+        pos->x = GS_MADD(dir_ptr->x, attrs->x38, head->pos.x);
+        pos->y = GS_MADD(dir_ptr->y, attrs->x38, head->pos.y);
+        pos->z = GS_MADD(dir_ptr->z, attrs->x38, head->pos.z);
     }
 
     if (count != 0) {
@@ -1540,9 +1633,9 @@ void it_802BA5DC(ItemLink* tail, ItemLink* head, Vec3* pos,
                     attrs->x38)
                 {
                     dir_ptr = &dir;
-                    link->pos.x = (dir_ptr->x * attrs->x38) + head_link->pos.x;
-                    link->pos.y = (dir_ptr->y * attrs->x38) + head_link->pos.y;
-                    link->pos.z = (dir_ptr->z * attrs->x38) + head_link->pos.z;
+                    link->pos.x = GS_MADD(dir_ptr->x, attrs->x38, head_link->pos.x);
+                    link->pos.y = GS_MADD(dir_ptr->y, attrs->x38, head_link->pos.y);
+                    link->pos.z = GS_MADD(dir_ptr->z, attrs->x38, head_link->pos.z);
                 } else {
                     retracted = true;
                 }
@@ -1553,9 +1646,9 @@ void it_802BA5DC(ItemLink* tail, ItemLink* head, Vec3* pos,
 
         if (it_802A3C98(pos_ptr = pos, &head_link->pos, &dir) > attrs->x38) {
             dir_ptr = &dir;
-            pos_ptr->x = (dir_ptr->x * attrs->x38) + head_link->pos.x;
-            pos->y = (dir_ptr->y * attrs->x38) + head_link->pos.y;
-            pos_ptr->z = (dir_ptr->z * attrs->x38) + head_link->pos.z;
+            pos_ptr->x = GS_MADD(dir_ptr->x, attrs->x38, head_link->pos.x);
+            pos->y = GS_MADD(dir_ptr->y, attrs->x38, head_link->pos.y);
+            pos_ptr->z = GS_MADD(dir_ptr->z, attrs->x38, head_link->pos.z);
         }
     }
 }
@@ -1589,17 +1682,17 @@ bool it_802BA760(ItemLink* link, Vec3* pos, itSamusGrappleAttributes* attrs,
         if (next->x2C_b0) {
             if (it_802A3C98(&next->pos, &cur->pos, &dir) > attrs->x38) {
                 dir_ptr = &dir;
-                next->pos.x = (dir_ptr->x * attrs->x38) + cur->pos.x;
-                next->pos.y = (dir_ptr->y * attrs->x38) + cur->pos.y;
-                next->pos.z = (dir_ptr->z * attrs->x38) + cur->pos.z;
+                next->pos.x = GS_MADD(dir_ptr->x, attrs->x38, cur->pos.x);
+                next->pos.y = GS_MADD(dir_ptr->y, attrs->x38, cur->pos.y);
+                next->pos.z = GS_MADD(dir_ptr->z, attrs->x38, cur->pos.z);
             }
             it_802A43EC(next);
         } else {
             if (it_802A3C98(pos, &cur->pos, &dir) > attrs->x38) {
                 dir_ptr = &dir;
-                next->pos.x = (dir_ptr->x * attrs->x38) + cur->pos.x;
-                next->pos.y = (dir_ptr->y * attrs->x38) + cur->pos.y;
-                next->pos.z = (dir_ptr->z * attrs->x38) + cur->pos.z;
+                next->pos.x = GS_MADD(dir_ptr->x, attrs->x38, cur->pos.x);
+                next->pos.y = GS_MADD(dir_ptr->y, attrs->x38, cur->pos.y);
+                next->pos.z = GS_MADD(dir_ptr->z, attrs->x38, cur->pos.z);
                 next->x2C_b0 = 1;
                 it_802A43B8(next);
             } else {

@@ -310,6 +310,23 @@ void itNesspkthunderball_UnkMotion0_Phys(Item_GObj* gobj)
             lbVector_CrossprodNormalized(&ip->x40_vel, &stick, &cross);
 
             if (angle >= MTXDegToRad(45.0f)) {
+#ifdef PORT
+                // PORT: the console folds the degree-to-radian product into
+                // the turn, one fmadds and one fnmsubs
+                // (itNesspkthunderball_UnkMotion0_Phys+0x12C and +0x148).
+                // Rounded twice, the ball's heading is an ULP off, and so are
+                // its path and the angle PK Thunder 2 launches Ness at. See
+                // docs/design/build.md, "Rounding and division".
+                if (cross.z > 0.0f) {
+                    ip->xDD4_itemVar.pkthunder.angles[0] = __builtin_fmaf(
+                        0.01745329252f, attr->x10_PKTHUNDER_TURN_RADIUS,
+                        ip->xDD4_itemVar.pkthunder.angles[0]);
+                } else if (cross.z < 0.0f) {
+                    ip->xDD4_itemVar.pkthunder.angles[0] = -__builtin_fmaf(
+                        0.01745329252f, attr->x10_PKTHUNDER_TURN_RADIUS,
+                        -ip->xDD4_itemVar.pkthunder.angles[0]);
+                }
+#else
                 if (cross.z > 0.0f) {
                     ip->xDD4_itemVar.pkthunder.angles[0] +=
                         MTXDegToRad(attr->x10_PKTHUNDER_TURN_RADIUS);
@@ -317,6 +334,7 @@ void itNesspkthunderball_UnkMotion0_Phys(Item_GObj* gobj)
                     ip->xDD4_itemVar.pkthunder.angles[0] -=
                         MTXDegToRad(attr->x10_PKTHUNDER_TURN_RADIUS);
                 }
+#endif
             }
             if (angle < MTXDegToRad(45.0f)) {
                 if (cross.z > 0.0f) {

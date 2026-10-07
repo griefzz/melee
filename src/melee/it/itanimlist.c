@@ -1,4 +1,7 @@
 #include "itanimlist.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include "forward.h"
 #include "inlines.h"
@@ -32,12 +35,36 @@ ItCmd it_803F22A8[16] = {
     it_802798D4, it_8027990C, it_80279958, it_802799A8,
 };
 
+#ifdef PORT
+// PORT: a second reading of a command word, cast over the cursor in
+// it_8027978C(). The transcoder byte-swaps the whole word, so the console's
+// halfword 0, which holds the run, is at byte 2 here with its bits the other
+// way. Both halves keep their value, so swapping the two members is the
+// whole change. tools/gen/gen_cmd_bitfields.py rewrites only single-word
+// bitfield structs, so this one is written by hand: bitfield_audit checks
+// its bit placement, and the asserts below check the byte that the audit's
+// within-the-word frame ignores. See docs/design/verification.md, "Command
+// scripts".
+typedef struct itAnimlistCmdUnk {
+    u16 x2;
+    u16 x0_b14 : 2;
+    u16 opcode : 8;
+    u16 x0_b0 : 6;
+} itAnimlistCmdUnk;
+
+_Static_assert(sizeof(itAnimlistCmdUnk) == 4,
+               "one command word, or ++cmd->x8.u walks the wrong distance");
+_Static_assert(offsetof(itAnimlistCmdUnk, x2) == 0,
+               "a byte-swapped word puts the console's second half-word first, "
+               "which leaves byte 2 for the run the console keeps at byte 0");
+#else
 typedef struct itAnimlistCmdUnk {
     u16 x0_b0 : 6;
     u16 opcode : 8;
     u16 x0_b14 : 2;
     u16 x2;
 } itAnimlistCmdUnk;
+#endif
 
 void it_80278F2C(Item_GObj* item_gobj, CommandInfo* cmd)
 {
@@ -48,20 +75,20 @@ void it_80278F2C(Item_GObj* item_gobj, CommandInfo* cmd)
     s32 arg6;
     PAD_STACK(4);
 
-    arg2 = ((u16*) cmd->x8.u)[0];
+    arg2 = CMD_U16(cmd->x8.u, 0);
     arg2 = arg2 & 0x3FF;
     ++cmd->x8.u;
-    arg6 = (f32) ((u16*) cmd->x8.u)[1];
-    ef_id = ((u16*) cmd->x8.u)[0];
+    arg6 = (f32) CMD_U16(cmd->x8.u, 1);
+    ef_id = CMD_U16(cmd->x8.u, 0);
     ++cmd->x8.u;
-    sp20.x = 0.003906f * ((s16*) cmd->x8.u)[0];
-    sp20.y = 0.003906f * ((s16*) cmd->x8.u)[1];
+    sp20.x = 0.003906f * CMD_S16(cmd->x8.u, 0);
+    sp20.y = 0.003906f * CMD_S16(cmd->x8.u, 1);
     ++cmd->x8.u;
-    sp20.z = 0.003906f * ((s16*) cmd->x8.u)[0];
-    sp14.x = 0.003906f * ((s16*) cmd->x8.u)[1];
+    sp20.z = 0.003906f * CMD_S16(cmd->x8.u, 0);
+    sp14.x = 0.003906f * CMD_S16(cmd->x8.u, 1);
     ++cmd->x8.u;
-    sp14.y = 0.003906f * ((s16*) cmd->x8.u)[0];
-    sp14.z = 0.003906f * ((s16*) cmd->x8.u)[1];
+    sp14.y = 0.003906f * CMD_S16(cmd->x8.u, 0);
+    sp14.z = 0.003906f * CMD_S16(cmd->x8.u, 1);
     ++cmd->x8.u;
     it_80278800(item_gobj, ef_id, arg2, &sp20, &sp14, 0, arg6);
 }
@@ -96,10 +123,21 @@ void it_802790C0(Item_GObj* item_gobj, CommandInfo* cmd)
     } else {
         hit->jobj = item_gobj->hsd_obj;
     }
+#ifdef PORT
+    // PORT: the damage is scaled by ratios from the item's and fighters'
+    // files, and the console's __cvt_fp2unsigned makes a negative product 0;
+    // see docs/design/verification.md, "Floats converted to unsigned".
+    it_80272460(hit,
+                port_cvt_fp2unsigned(
+                    item->xC3C *
+                    ((f32) cmd->x8.u->it_create_hitbox_0.damage * item->xC40)),
+                item_gobj);
+#else
     it_80272460(hit,
                 item->xC3C *
                     ((f32) cmd->x8.u->it_create_hitbox_0.damage * item->xC40),
                 item_gobj);
+#endif
     ++cmd->x8.u;
 
     hit->scale = 0.003906f * cmd->x8.u->create_hitbox_1.size;
@@ -137,12 +175,12 @@ void it_802790C0(Item_GObj* item_gobj, CommandInfo* cmd)
     hit->x42_b1 = cmd->x8.u->create_hitbox_5.x1_b5;
     hit->x42_b2 = cmd->x8.u->create_hitbox_5.x1_b6;
     hit->x42_b3 = cmd->x8.u->create_hitbox_5.x1_b7;
-    hit->x42_b4 = (((u8*) cmd->x8.u)[2] >> 7) & 1;
-    hit->x42_b5 = (((u8*) cmd->x8.u)[2] >> 6) & 1;
-    hit->x42_b6 = (((u8*) cmd->x8.u)[2] >> 5) & 1;
-    hit->x42_b7 = (((u8*) cmd->x8.u)[2] >> 4) & 1;
-    hit->x43_b0 = (((u8*) cmd->x8.u)[2] >> 3) & 1;
-    hb->x138 = (((u8*) cmd->x8.u)[2] >> 2) & 1;
+    hit->x42_b4 = (CMD_U8(cmd->x8.u, 2) >> 7) & 1;
+    hit->x42_b5 = (CMD_U8(cmd->x8.u, 2) >> 6) & 1;
+    hit->x42_b6 = (CMD_U8(cmd->x8.u, 2) >> 5) & 1;
+    hit->x42_b7 = (CMD_U8(cmd->x8.u, 2) >> 4) & 1;
+    hit->x43_b0 = (CMD_U8(cmd->x8.u, 2) >> 3) & 1;
+    hb->x138 = (CMD_U8(cmd->x8.u, 2) >> 2) & 1;
     ++cmd->x8.u;
 
     hit->x43_b2 = 0;
@@ -158,9 +196,17 @@ void it_80279544(Item_GObj* item_gobj, CommandInfo* cmd)
     Item* item = item_gobj->user_data;
     HitCapsule* hit =
         &item->x5D4_hitboxes[cmd->x8.u->set_hitbox_damage.idx].hit;
-    u32 val = ((u16*) cmd->x8.u)[1] & 0x1FFF;
+    u32 val = CMD_U16(cmd->x8.u, 1) & 0x1FFF;
     PAD_STACK(8);
+#ifdef PORT
+    // PORT: the damage is scaled by ratios from the item's and fighters'
+    // files, and the console's __cvt_fp2unsigned makes a negative product 0.
+    it_80272460(hit,
+                port_cvt_fp2unsigned(item->xC3C * ((f32) val * item->xC40)),
+                item_gobj);
+#else
     it_80272460(hit, (u32) (item->xC3C * ((f32) val * item->xC40)), item_gobj);
+#endif
     ++cmd->x8.u;
 }
 
@@ -232,8 +278,8 @@ void it_8027978C(Item_GObj* item_gobj, CommandInfo* cmd)
     case 2:
         arg1 = *(u32*) cmd->x8.u;
         ++cmd->x8.u;
-        arg2 = ((u8*) cmd->x8.u)[2];
-        arg3 = ((u8*) cmd->x8.u)[3];
+        arg2 = CMD_U8(cmd->x8.u, 2);
+        arg3 = CMD_U8(cmd->x8.u, 3);
         switch (opcode) {
         case 0:
             Item_8026AE84(item, arg1, arg2, arg3);

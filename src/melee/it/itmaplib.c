@@ -895,7 +895,16 @@ static inline float sqrtf_accurate_local(float x)
 
 static inline float return_sqrt_value(Vec3* v)
 {
+#ifdef PORT
+    // PORT: inlined with a == b, product_xy is a sum of squares of memory,
+    // which MWCC leaves unfused (it_8027781C's four fmadds all come from the
+    // product_xy calls on two vectors). Written out, a contracting build
+    // sees the squares and does the same; see docs/design/build.md,
+    // "Rounding and division".
+    return sqrtf_accurate_local(v->x * v->x + v->y * v->y);
+#else
     return sqrtf_accurate_local(product_xy(v, v));
+#endif
 }
 
 bool it_8027781C(Item_GObj* item_gobj)

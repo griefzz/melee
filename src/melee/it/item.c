@@ -1,4 +1,7 @@
 #include "item.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <melee/lb/forward.h>
 
@@ -1646,7 +1649,15 @@ static bool Item_80269F14(HSD_GObj* gobj)
                 temp_f30 =
                     temp_item->x5D4_hitboxes[i].hit.damage * temp_item->xC6C +
                     0.99f;
+#ifdef PORT
+                // PORT: a reflected hit is scaled by the reflector's file,
+                // and the console's __cvt_fp2unsigned makes a negative one
+                // 0; see docs/design/verification.md, "Floats converted to
+                // unsigned".
+                var_r27 = port_cvt_fp2unsigned(temp_f30);
+#else
                 var_r27 = temp_f30;
+#endif
                 if (var_r27 > it_804D6D28->xD8) {
                     var_r27 = it_804D6D28->xD8;
                 }

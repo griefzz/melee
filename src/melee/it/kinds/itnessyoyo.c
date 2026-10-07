@@ -18,6 +18,20 @@
 #include <sysdolphin/baselib/gobjplink.h>
 #include <sysdolphin/baselib/gobjuserdata.h>
 
+#ifdef PORT
+// PORT: MWCC contracted 28 multiply-adds in this file: the links pulled to
+// the string's length, dir * len + anchor, per axis (NY_MADD; 27 fmadds in
+// it_802BF180(), it_802BF28C() and it_802BF4A0() with its inlined
+// adjust_tail), and the yo-yo's pull, vel.x += x28 * facing_dir
+// (it_802BF4A0()). it_802BFEC4()'s three fnmsubs are MSL's inline sqrtf,
+// which the port's sqrtf reproduces. The lengths are it_802A3C98()'s, which
+// this file calls rather than inlines, and that copy is not fused
+// (itlinkhookshot.c). See docs/design/build.md, "Rounding and division".
+#define NY_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#else
+#define NY_MADD(a, b, c) ((a) * (b) + (c))
+#endif
+
 ItemStateTable it_803F7558[] = {
     { -1, itNessyoyo_UnkMotion3_Anim, itNessyoyo_UnkMotion0_Phys, NULL },
     { -1, itNessyoyo_UnkMotion3_Anim, itNessyoyo_UnkMotion1_Phys, NULL },
@@ -77,6 +91,11 @@ HSD_GObj* it_802BE65C(Item* ip, HSD_JObj* bone_jobj)
     HSD_JObj* jobj;
     int i;
 
+#ifdef PORT
+    // PORT: as in itclimbersstring.c, the failure path frees through
+    // prev_link before anything assigns it.
+    prev_link = NULL;
+#endif
     for (i = 0; i < attrs->x0_CHARGE_SPAWN_POS; i++) {
         link_gobj = GObj_Create(7, 0xA, 0);
         if (link_gobj == NULL) {
@@ -375,18 +394,18 @@ void it_802BF180(ItemLink* cur, Vec3* target, itYoyoAttributes* attrs,
     ItemLink* prev = cur->prev;
 
     it_802A3C98(&cur->pos, target, &dir);
-    cur->pos.x = (dir.x * length) + target->x;
-    cur->pos.y = (dir.y * length) + target->y;
-    cur->pos.z = (dir.z * length) + target->z;
+    cur->pos.x = NY_MADD(dir.x, length, target->x);
+    cur->pos.y = NY_MADD(dir.y, length, target->y);
+    cur->pos.z = NY_MADD(dir.z, length, target->z);
     while (prev != NULL) {
         prev->vel.y = 0.0f;
         it_802A4420(prev);
         it_802A43EC(prev);
         it_802A3D90(prev);
         if (it_802A3C98(&prev->pos, &cur->pos, &dir) > length) {
-            prev->pos.x = (dir.x * length) + cur->pos.x;
-            prev->pos.y = (dir.y * length) + cur->pos.y;
-            prev->pos.z = (dir.z * length) + cur->pos.z;
+            prev->pos.x = NY_MADD(dir.x, length, cur->pos.x);
+            prev->pos.y = NY_MADD(dir.y, length, cur->pos.y);
+            prev->pos.z = NY_MADD(dir.z, length, cur->pos.z);
         }
         cur = prev;
         prev = prev->prev;
@@ -418,23 +437,23 @@ s32 it_802BF28C(ItemLink* link, Vec3* target, itYoyoAttributes* attrs,
                 next->pos = *target;
                 dist = it_802A3C98(&next->pos, &cur->pos, &dir);
                 if (dist > max_len) {
-                    next->pos.x = (dir.x * max_len) + cur->pos.x;
-                    next->pos.y = (dir.y * max_len) + cur->pos.y;
-                    next->pos.z = (dir.z * max_len) + cur->pos.z;
+                    next->pos.x = NY_MADD(dir.x, max_len, cur->pos.x);
+                    next->pos.y = NY_MADD(dir.y, max_len, cur->pos.y);
+                    next->pos.z = NY_MADD(dir.z, max_len, cur->pos.z);
                 } else if (dist < min_len) {
                     if (it_802A3C98(&next->pos, target, &dir2) <= 0.1f) {
                         next->x2C_b0 = false;
                     } else {
-                        next->pos.x = (dir.x * min_len) + cur->pos.x;
-                        next->pos.y = (dir.y * min_len) + cur->pos.y;
-                        next->pos.z = (dir.z * min_len) + cur->pos.z;
+                        next->pos.x = NY_MADD(dir.x, min_len, cur->pos.x);
+                        next->pos.y = NY_MADD(dir.y, min_len, cur->pos.y);
+                        next->pos.z = NY_MADD(dir.z, min_len, cur->pos.z);
                     }
                 }
             } else {
                 if (it_802A3C98(target, &cur->pos, &dir) > max_len) {
-                    next->pos.x = (dir.x * max_len) + cur->pos.x;
-                    next->pos.y = (dir.y * max_len) + cur->pos.y;
-                    next->pos.z = (dir.z * max_len) + cur->pos.z;
+                    next->pos.x = NY_MADD(dir.x, max_len, cur->pos.x);
+                    next->pos.y = NY_MADD(dir.y, max_len, cur->pos.y);
+                    next->pos.z = NY_MADD(dir.z, max_len, cur->pos.z);
                     next->x2C_b0 = true;
                 } else {
                     return 0;
@@ -456,15 +475,15 @@ static inline void it_802BF4A0_adjust_tail(ItemLink* cur, Vec3* target,
     prev = cur->prev;
     tail = cur;
     it_802A3C98(&tail->pos, target, dir2);
-    cur->pos.x = (dir2->x * size) + target->x;
-    cur->pos.y = (dir2->y * size) + target->y;
-    cur->pos.z = (dir2->z * size) + target->z;
+    cur->pos.x = NY_MADD(dir2->x, size, target->x);
+    cur->pos.y = NY_MADD(dir2->y, size, target->y);
+    cur->pos.z = NY_MADD(dir2->z, size, target->z);
 
     while (prev != NULL) {
         if (it_802A3C98(&prev->pos, &tail->pos, dir2) > size) {
-            prev->pos.x = (dir2->x * size) + tail->pos.x;
-            prev->pos.y = (dir2->y * size) + tail->pos.y;
-            prev->pos.z = (dir2->z * size) + tail->pos.z;
+            prev->pos.x = NY_MADD(dir2->x, size, tail->pos.x);
+            prev->pos.y = NY_MADD(dir2->y, size, tail->pos.y);
+            prev->pos.z = NY_MADD(dir2->z, size, tail->pos.z);
         }
         tail = prev;
         prev = prev->prev;
@@ -490,7 +509,12 @@ s32 it_802BF4A0(ItemLink* link, Vec3* target, itYoyoAttributes* attrs,
     next = link->next;
 
     if (ABS(link->vel.x) < attrs->x2C_UNK3_MOD) {
+#ifdef PORT
+        link->vel.x = NY_MADD(attrs->x28_YOYO_PULL_STRENGTH, ip->facing_dir,
+                              link->vel.x);
+#else
         link->vel.x += attrs->x28_YOYO_PULL_STRENGTH * ip->facing_dir;
+#endif
     } else {
         link->vel.x = attrs->x2C_UNK3_MOD * ip->facing_dir;
     }
@@ -520,9 +544,9 @@ s32 it_802BF4A0(ItemLink* link, Vec3* target, itYoyoAttributes* attrs,
             it_802A4420(next);
             it_802BF030(cur, 0, size);
             if (it_802A3C98(&next->pos, &cur->pos, &dir) > size) {
-                next->pos.x = (dir.x * size) + cur->pos.x;
-                next->pos.y = (dir.y * size) + cur->pos.y;
-                next->pos.z = (dir.z * size) + cur->pos.z;
+                next->pos.x = NY_MADD(dir.x, size, cur->pos.x);
+                next->pos.y = NY_MADD(dir.y, size, cur->pos.y);
+                next->pos.z = NY_MADD(dir.z, size, cur->pos.z);
             }
             it_802A43EC(next);
             it_802A42F4(next, 1.5 + target->y);
@@ -536,9 +560,9 @@ s32 it_802BF4A0(ItemLink* link, Vec3* target, itYoyoAttributes* attrs,
             if (count > charge_len) {
                 next->pos = *target;
             } else if (it_802A3C98(target, &cur->pos, &dir) > size) {
-                next->pos.x = (dir.x * size) + cur->pos.x;
-                next->pos.y = (dir.y * size) + cur->pos.y;
-                next->pos.z = (dir.z * size) + cur->pos.z;
+                next->pos.x = NY_MADD(dir.x, size, cur->pos.x);
+                next->pos.y = NY_MADD(dir.y, size, cur->pos.y);
+                next->pos.z = NY_MADD(dir.z, size, cur->pos.z);
                 next->x2C_b0 = true;
                 it_802A43B8(next);
             } else if (coll_flags != 0) {

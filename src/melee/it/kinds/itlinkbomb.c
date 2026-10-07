@@ -516,8 +516,15 @@ void itLinkbomb_UnkMotion4_Phys(HSD_GObj* gobj)
     if (item->xDD4_itemVar.linkbomb.x0.x0.b1) {
         temp_f2 = item->x40_vel.x;
         if (temp_f2 != zero) {
+#ifdef PORT
+            // PORT: fmadds on the console (itLinkbomb_UnkMotion4_Phys+0x30);
+            // docs/design/build.md, "Rounding and division".
+            item->x40_vel.x = __builtin_fmaf(
+                sa->x2C, item->xDD4_itemVar.linkbomb.x4, temp_f2);
+#else
             item->x40_vel.x =
                 (sa->x2C * item->xDD4_itemVar.linkbomb.x4) + temp_f2;
+#endif
         }
         if (ABS(item->x40_vel.x) < sa->x30) {
             item->x40_vel.x = zero;

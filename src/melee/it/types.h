@@ -86,6 +86,24 @@ struct Item_DynamicBones {
 ASSERT_SIZE(struct Item_DynamicBones, 0x1C);
 
 struct ItemAttr {
+#ifdef PORT
+    // PORT: two bytes of flags out of the item file, so the bits have to be
+    // the ones the file means. The masks in the comments below are the
+    // console's: x0_is_heavy is 0x80 and x0_hold_kind the low three bits,
+    // which is MWCC filling a u8 run from the top down. Clang fills from the
+    // bottom up, so each run is declared in reverse; each byte is its own run
+    // and fills exactly eight bits, so no padding is needed. See
+    // docs/design/verification.md, "Bitfield order".
+    u8 x0_hold_kind : 3;
+    u8 x0_78 : 4;
+    u8 x0_is_heavy : 1;
+    u8 x1_8 : 1;
+    u8 x1_67_cam_kind : 2;
+    u8 x1_5 : 1;
+    u8 x1_4 : 1;
+    u8 x1_3 : 1;
+    u8 x1_1 : 2;
+#else
     u8 x0_is_heavy : 1; // 0x0, bit 0x80, is heavy item (crate)
     u8 x0_78 : 4; // Should be enum (Item_UnkKinds?) for type of action char
                   // takes when using - 0: throwable, 2: Swingable, 3:
@@ -97,6 +115,7 @@ struct ItemAttr {
     u8 x1_5 : 1;            // 0x1 0x08
     u8 x1_67_cam_kind : 2;  // 0x1 0x06, is stored to 0xdcd
     u8 x1_8 : 1;            // 0x1 0x01    char flags3; //0x2
+#endif
     u8 x3;                  // 0x3
     f32 x4_throw_speed_mul; // 0x4, speed multiplier at which this item is
                             // thrown at
@@ -131,6 +150,23 @@ struct ItemAttr {
     s32 x7C; // 0x7c
     s32 x80; // 0x80
 };
+#if defined(PORT) || defined(LINT)
+/// One collision-dynamics record: a bone, a point on it and a radius.
+///
+/// PORT: byte for byte #AbsorbDesc (lb/types.h), the same record on the
+/// fighter side (ftDynamics.x8); see #ItemDynamics::coll_count.
+/// @sz{14}
+typedef struct ItemCollDynamicsDesc {
+    /// @at{0} @sz{4}
+    s32 bone_id;
+
+    /// @at{4} @sz{C}
+    Vec3 offset;
+
+    /// @at{10} @sz{4}
+    f32 size;
+} ItemCollDynamicsDesc;
+#endif
 
 struct ItemDynamics {
     /// @todo Combine with ftDynamics? Can see in it_8027163C that this struct
@@ -138,6 +174,21 @@ struct ItemDynamics {
     int count;
 
     BoneDynamicsTemplate* dyn_descs DAT_COUNT(count);
+#if defined(PORT) || defined(LINT)
+
+    /// PORT: the collision pair. ItemDynamics holds two independent
+    /// (count, array) pairs, bone physics and collision, as #ftDynamics does
+    /// for a fighter. Item_80268560() (it/item.c) reads the first; the
+    /// console's it_8027163C() (it/itcoll.c) reaches this one by casting the
+    /// struct to eight bytes of padding then a count and a pointer, which
+    /// misses it here: dyn_descs is eight bytes and 8-aligned, so the cast's
+    /// count lands on its low half.
+    /// @at{8} @sz{4}
+    s32 coll_count;
+
+    /// @at{C} @sz{4}
+    ItemCollDynamicsDesc* coll_descs DAT_COUNT(coll_count);
+#endif
 };
 
 /// @todo In some stage items (e.g. in @c GrCn.dat), #x4_matanim_joint and

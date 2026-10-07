@@ -1,4 +1,7 @@
 #include "ithitbox.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include "inlines.h"
 #include "it_2725.h"
@@ -141,7 +144,17 @@ void it_80275640(Item_GObj* item_gobj, f32 arg1)
     for (i = 0; i < 4; i++) {
         HitCapsule* hitcapsule = &item->x5D4_hitboxes[i].hit;
         if (hitcapsule->state != HitCapsule_Disabled) {
+#ifdef PORT
+            // PORT: damage times the bounce coefficient from the item's
+            // file; the console's __cvt_fp2unsigned makes a negative product
+            // 0. See docs/design/verification.md, "Floats converted to
+            // unsigned".
+            it_80272460(hitcapsule,
+                        port_cvt_fp2unsigned(hitcapsule->damage * arg1),
+                        item_gobj);
+#else
             it_80272460(hitcapsule, hitcapsule->damage * arg1, item_gobj);
+#endif
         }
     }
 }

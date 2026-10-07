@@ -62,6 +62,7 @@ static bool itColl_chkECBOverlap(f32 pos_x, f32 pos_y, itECB* ecb_a,
 
 const Quaternion it_803B8560 = { 0.0f, 0.0f, 1.0f, 0.0f };
 
+#ifndef PORT
 typedef struct ItCollDynamicsDesc {
     s32 bone_id;
     Vec3 offset;
@@ -73,6 +74,7 @@ typedef struct ItCollDynamics {
     s32 count;
     ItCollDynamicsDesc* descs;
 } ItCollDynamics;
+#endif
 
 void it_8026F9A0(void)
 {
@@ -1014,7 +1016,17 @@ void it_8027163C(Item_GObj* item_gobj)
     Item* item;
     Article* article;
     ItHurtBoneList* it_hurtbox;
+#if defined(PORT) || defined(LINT)
+    // PORT: the console's code reaches the second half of ItemDynamics
+    // through ItCollDynamics, a local type of eight bytes of padding then a
+    // count and a pointer. Here dyn_descs, the pointer before them, is eight
+    // bytes and 8-aligned, so the cast's count would land on its low half;
+    // the port reads ItemDynamics' own coll_count and coll_descs
+    // (it/types.h).
+    ItemDynamics* it_dynams;
+#else
     ItCollDynamics* it_dynams;
+#endif
     u32 cnt;
     HurtCapsule* hurt;
     ItHurtBoneDesc* hurt_dyn_desc;
@@ -1024,7 +1036,11 @@ void it_8027163C(Item_GObj* item_gobj)
     item = item_gobj->user_data;
     article = item->xC4_article_data;
     it_hurtbox = article->x8_hurtbones;
+#if defined(PORT) || defined(LINT)
+    it_dynams = article->x14_dynamics;
+#else
     it_dynams = (ItCollDynamics*) article->x14_dynamics;
+#endif
     if (it_hurtbox != NULL) {
         if (it_hurtbox->count > 2) {
             HSD_ASSERTREPORT(0x3F4, 0, "item hit num over!\n");
@@ -1055,15 +1071,31 @@ void it_8027163C(Item_GObj* item_gobj)
         item->xAC8_hurtboxNum = 0;
     }
     if (it_dynams != NULL) {
+#if defined(PORT) || defined(LINT)
+        if (it_dynams->coll_count > 2) {
+#else
         if (it_dynams->count > 2) {
+#endif
             HSD_ASSERTREPORT(0x415, 0, "item dynamics hit num over!\n");
         }
         cnt = 0U;
+#if defined(PORT) || defined(LINT)
+        item->xB68 = it_dynams->coll_count;
+#else
         item->xB68 = it_dynams->count;
+#endif
         index = 0;
+#if defined(PORT) || defined(LINT)
+        while (cnt < it_dynams->coll_count) {
+#else
         while (cnt < it_dynams->count) {
+#endif
             struct xB6C_t* vars = &item->xB6C_vars[cnt];
+#if defined(PORT) || defined(LINT)
+            ItemCollDynamicsDesc* bone_dyn_desc = &it_dynams->coll_descs[index];
+#else
             ItCollDynamicsDesc* bone_dyn_desc = &it_dynams->descs[index];
+#endif
             vars->xB90 = bone_dyn_desc->bone_id;
             vars->xB7C =
                 item->xBBC_dynamicBoneTable->bones[bone_dyn_desc->bone_id];

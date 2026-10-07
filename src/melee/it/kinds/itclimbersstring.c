@@ -14,6 +14,20 @@
 #include <sysdolphin/baselib/gobjplink.h>
 #include <sysdolphin/baselib/gobjuserdata.h>
 
+#ifdef PORT
+// PORT: MWCC contracted 28 multiply-adds in this file: the links pulled to
+// the string's length, dir * len + anchor, per axis (CS_MADD; 27 fmadds in
+// it_802C2CA8(), it_802C2DB0(), it_802C2EC4() and it_802C30E8()), and
+// it_802C30E8()'s vel.y -= 0.9f * x14 (CS_NMSUB, fnmsubs). The lengths are
+// it_802A3C98()'s, which this file calls rather than inlines, and that copy
+// is not fused (itlinkhookshot.c). See docs/design/build.md, "Rounding and
+// division".
+#define CS_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#define CS_NMSUB(a, b, c) (-__builtin_fmaf((a), (b), -(c)))
+#else
+#define CS_MADD(a, b, c) ((a) * (b) + (c))
+#endif
+
 /* 2C248C */ static Item_GObj* it_802C248C(Item* ip, HSD_JObj* jobj);
 /* 2C28DC */ static void fn_802C28DC(Item_GObj* gobj);
 /* 2C29E8 */ static void fn_802C29E8(Item_GObj* gobj);
@@ -62,6 +76,14 @@ static HSD_GObj* it_802C248C(Item* ip, HSD_JObj* jobj)
     int i;
     PAD_STACK(4);
 
+#ifdef PORT
+    // PORT: the GObj_Create() failure path frees the links already built by
+    // walking prev_link, and the decomp lacks the assignment, so on i == 0
+    // it would free through an uninitialised local. The three sibling chain
+    // builders, it_802B75FC() (itsamusgrapple.c), it_802BAF2C()
+    // (itseakchain.c) and it_802A2568() (itlinkhookshot.c), clear it.
+    prev_link = NULL;
+#endif
     for (i = 0; i < attrs->x0_count; i++) {
         link_gobj = GObj_Create(7, 0xA, 0);
 
@@ -288,15 +310,15 @@ void it_802C2CA8(ItemLink* link, Vec3* target,
     ItemLink* prev = link->prev;
 
     it_802A3C98(&link->pos, target, &dir);
-    link->pos.x = (dir.x * length) + target->x;
-    link->pos.y = (dir.y * length) + target->y;
-    link->pos.z = (dir.z * length) + target->z;
+    link->pos.x = CS_MADD(dir.x, length, target->x);
+    link->pos.y = CS_MADD(dir.y, length, target->y);
+    link->pos.z = CS_MADD(dir.z, length, target->z);
     while (prev != NULL) {
         if (prev->x2C_b0) {
             if (it_802A3C98(&prev->pos, &link->pos, &dir) > attrs->x8) {
-                prev->pos.x = (dir.x * attrs->x8) + link->pos.x;
-                prev->pos.y = (dir.y * attrs->x8) + link->pos.y;
-                prev->pos.z = (dir.z * attrs->x8) + link->pos.z;
+                prev->pos.x = CS_MADD(dir.x, attrs->x8, link->pos.x);
+                prev->pos.y = CS_MADD(dir.y, attrs->x8, link->pos.y);
+                prev->pos.z = CS_MADD(dir.z, attrs->x8, link->pos.z);
             }
         }
         link = prev;
@@ -313,16 +335,16 @@ void it_802C2DB0(ItemLink* cur, Vec3* target,
     PAD_STACK(4);
 
     it_802A3C98(&cur->pos, target, &dir);
-    cur->pos.x = (dir.x * length) + target->x;
-    cur->pos.y = (dir.y * length) + target->y;
-    cur->pos.z = (dir.z * length) + target->z;
+    cur->pos.x = CS_MADD(dir.x, length, target->x);
+    cur->pos.y = CS_MADD(dir.y, length, target->y);
+    cur->pos.z = CS_MADD(dir.z, length, target->z);
     while (prev != NULL) {
         prev->vel.y -= attrs->x14;
         it_802A4420(prev);
         if (it_802A3C98(&prev->pos, &cur->pos, &dir) > attrs->x8) {
-            prev->pos.x = (dir.x * attrs->x8) + cur->pos.x;
-            prev->pos.y = (dir.y * attrs->x8) + cur->pos.y;
-            prev->pos.z = (dir.z * attrs->x8) + cur->pos.z;
+            prev->pos.x = CS_MADD(dir.x, attrs->x8, cur->pos.x);
+            prev->pos.y = CS_MADD(dir.y, attrs->x8, cur->pos.y);
+            prev->pos.z = CS_MADD(dir.z, attrs->x8, cur->pos.z);
         }
         cur = prev;
         prev = prev->prev;
@@ -351,23 +373,23 @@ s32 it_802C2EC4(ItemLink* link, Vec3* target,
             iter->pos = *target;
             dist = it_802A3C98(&iter->pos, &cur->pos, &dir);
             if (dist > attrs->x8) {
-                iter->pos.x = (dir.x * attrs->x8) + cur->pos.x;
-                iter->pos.y = (dir.y * attrs->x8) + cur->pos.y;
-                iter->pos.z = (dir.z * attrs->x8) + cur->pos.z;
+                iter->pos.x = CS_MADD(dir.x, attrs->x8, cur->pos.x);
+                iter->pos.y = CS_MADD(dir.y, attrs->x8, cur->pos.y);
+                iter->pos.z = CS_MADD(dir.z, attrs->x8, cur->pos.z);
             } else if (dist < attrs->xC) {
                 if (it_802A3C98(&iter->pos, target, &dir2) <= 0.1f) {
                     iter->x2C_b0 = false;
                 } else {
-                    iter->pos.x = (dir.x * attrs->xC) + cur->pos.x;
-                    iter->pos.y = (dir.y * attrs->xC) + cur->pos.y;
-                    iter->pos.z = (dir.z * attrs->xC) + cur->pos.z;
+                    iter->pos.x = CS_MADD(dir.x, attrs->xC, cur->pos.x);
+                    iter->pos.y = CS_MADD(dir.y, attrs->xC, cur->pos.y);
+                    iter->pos.z = CS_MADD(dir.z, attrs->xC, cur->pos.z);
                 }
             }
         } else {
             if (it_802A3C98(target, &cur->pos, &dir) > attrs->x8) {
-                iter->pos.x = (dir.x * attrs->x8) + cur->pos.x;
-                iter->pos.y = (dir.y * attrs->x8) + cur->pos.y;
-                iter->pos.z = (dir.z * attrs->x8) + cur->pos.z;
+                iter->pos.x = CS_MADD(dir.x, attrs->x8, cur->pos.x);
+                iter->pos.y = CS_MADD(dir.y, attrs->x8, cur->pos.y);
+                iter->pos.z = CS_MADD(dir.z, attrs->x8, cur->pos.z);
                 iter->x2C_b0 = true;
             } else {
                 return 0;
@@ -397,7 +419,11 @@ s32 it_802C30E8(ItemLink* link, Vec3* target,
     Fighter* fp = GET_FIGHTER(ip->xDD4_itemVar.climbersstring.xC);
     PAD_STACK(8);
 
+#ifdef PORT
+    link->vel.y = CS_NMSUB(0.9f, attrs->x14, link->vel.y);
+#else
     link->vel.y -= 0.9f * attrs->x14;
+#endif
 
     if (fp->u.pp.x2240.x != 0.0f || fp->u.pp.x2240.y != 0.0f) {
         link->pos = fp->u.pp.x2240;
@@ -412,18 +438,18 @@ s32 it_802C30E8(ItemLink* link, Vec3* target,
             iter->vel.y -= attrs->x14;
             it_802A4420(iter);
             if (it_802A3C98(&iter->pos, &cur->pos, &dir) > attrs->x8) {
-                iter->pos.x = (dir.x * attrs->x8) + cur->pos.x;
-                iter->pos.y = (dir.y * attrs->x8) + cur->pos.y;
-                iter->pos.z = (dir.z * attrs->x8) + cur->pos.z;
+                iter->pos.x = CS_MADD(dir.x, attrs->x8, cur->pos.x);
+                iter->pos.y = CS_MADD(dir.y, attrs->x8, cur->pos.y);
+                iter->pos.z = CS_MADD(dir.z, attrs->x8, cur->pos.z);
             }
         } else {
             if (counter > attrs->x4) {
                 iter->pos = *target;
             } else {
                 if (it_802A3C98(target, &cur->pos, &dir) > attrs->x8) {
-                    iter->pos.x = (dir.x * attrs->x8) + cur->pos.x;
-                    iter->pos.y = (dir.y * attrs->x8) + cur->pos.y;
-                    iter->pos.z = (dir.z * attrs->x8) + cur->pos.z;
+                    iter->pos.x = CS_MADD(dir.x, attrs->x8, cur->pos.x);
+                    iter->pos.y = CS_MADD(dir.y, attrs->x8, cur->pos.y);
+                    iter->pos.z = CS_MADD(dir.z, attrs->x8, cur->pos.z);
                     iter->x2C_b0 = true;
                 } else {
                     return 0;
