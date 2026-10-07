@@ -68,8 +68,25 @@
 /* 31263C */ void Toy_8031263C(void);
 /* 3127D4 */ void Toy_803127D4(void);
 /* 3FE5E8 */ extern char Toy_str_ScMenFigure_cam_int1_camera[];
+#ifdef PORT
+// PORT: a pointer into the one Toy26B8 the port keeps, rather than an array
+// of its own; see the note where it is defined in toy.c. Indexing is
+// unchanged, and nothing takes its sizeof.
+/* 4A284C */ extern u16* const Toy_804A284C;
+#else
 /* 4A284C */ extern u16 Toy_804A284C[302];
+#endif
+#ifdef PORT
+// PORT: 0x804A26B8 + 0x3F0 is 0x804A2AA8, so this is `Toy26B8::anim` inside
+// the one region toy.c keeps, and toy.c reaches it by both names. As its
+// own object it would be a second, always-zero copy. Exported as a pointer
+// for the same reason as Toy_804A284C above: the storage is a static in
+// toy.c.
+extern ToyAnimState* const Toy_804A2AA8_p;
+#define Toy_804A2AA8 (*Toy_804A2AA8_p)
+#else
 /* 4A2AA8 */ extern ToyAnimState Toy_804A2AA8;
+#endif
 /* 4D6EAC */ extern TyDspEntry* Toy_sbss_804D6EAC;
 /* 4D6EB0 */ extern TyDspEntry* Toy_sbss_804D6EB0;
 /* 4D6EC8 */ extern HSD_Archive* Toy_sbss_804D6EC8;

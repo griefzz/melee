@@ -1,4 +1,7 @@
 #include "if_3004.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned; docs/decomp-patches.md
+#endif
 
 #include <melee/gm/forward.h>
 
@@ -655,16 +658,38 @@ bool un_80300724(enum soundtest_callback_arg0 arg0)
 
 bool un_80300758(enum soundtest_callback_arg0 arg0)
 {
+#ifdef PORT
+    // PORT: the decomp has no `return`, and un_80302E00() (textlib_1.c)
+    // reads the result. The console's is determined even so: `cmpwi r3, 1`
+    // leaves r3 alone and un_802FFCD0() never writes r3, so it returns
+    // `count` (4) on the arg0 == 1 path and the incoming arg0 otherwise. Only
+    // zero or non-zero reaches the consumer.
+    if (arg0 == 1) {
+        un_802FFCD0(4, un_803FA258.x10);
+        return true;
+    }
+    return arg0 != 0;
+#else
     if (arg0 == 1) {
         un_802FFCD0(4, un_803FA258.x10);
     }
+#endif
 }
 
 bool un_80300790(enum soundtest_callback_arg0 arg0)
 {
+#ifdef PORT
+    // PORT: as in un_80300758().
+    if (arg0 == 1) {
+        un_802FFCD0(4, un_803FA258.x24);
+        return true;
+    }
+    return arg0 != 0;
+#else
     if (arg0 == 1) {
         un_802FFCD0(4, un_803FA258.x24);
     }
+#endif
 }
 
 bool un_803007C8(enum soundtest_callback_arg0 arg0)
@@ -918,7 +943,15 @@ bool fn_80300DE0(enum soundtest_callback_arg0 arg0)
         break;
     case 6:
         sfxForward();
+#ifdef PORT
+        // PORT: a saved count of -296..-1 reads back as 42949672.0f, and 100
+        // times that rounds to 2^32, which converts to 0xFFFFFFFF on the
+        // console and to 0 on x86. See docs/design/verification.md, "Floats
+        // converted to unsigned".
+        *ptr = port_cvt_fp2unsigned(100.0f * un_804D6DD0);
+#else
         *ptr = (u32) (100.0f * un_804D6DD0);
+#endif
         gm_ChangeGameModeAfterCurrentScene(GM_MENU);
         gm_801A4B60();
         break;

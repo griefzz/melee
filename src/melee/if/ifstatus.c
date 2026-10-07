@@ -1,5 +1,9 @@
 #include "ifstatus.h"
 
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#include <placeholder.h>
+#endif
 #include "if_2F72.h"
 #include "ifall.h"
 #include "ifcoget.h"
@@ -757,6 +761,11 @@ void ifStatus_802F665C(int arg0)
     int i;
 
     ifAll_802F343C(arg0);
+#ifdef PORT
+    // PORT: the match's HUD is being built, where Slippi's in-game delay
+    // sets up (ifStatus_802F665C+0x10).
+    port_hook_hud_created();
+#endif
     ifStatus_804D6D60 = arg0;
     for (i = 0; i < 6; i++) {
         ifStatus_802F6508(i);

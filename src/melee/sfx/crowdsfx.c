@@ -9,6 +9,9 @@
 #include <melee/pl/plbonuslib.h>
 #include <sysdolphin/baselib/gobj.h>
 #include <sysdolphin/baselib/gobjproc.h>
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 /* 4A2F08 */ CrowdSFX_UnkStruct crowdsfx;
 /* 4D7050 */ CrowdSFX_UnkStruct* crowdsfx_ptr;
@@ -21,6 +24,11 @@ void fn_803219AC(HSD_GObj* gobj)
     }
     un_80321A00(gobj);
     un_80321AF4(gobj);
+#ifdef PORT
+    // PORT: the last proc of a match frame any recording reads from, where
+    // Slippi's recorder flushes the frame (fn_803219AC+0x40).
+    port_hook_crowd_sfx_frame();
+#endif
 }
 
 void un_80321A00(HSD_GObj* gobj)

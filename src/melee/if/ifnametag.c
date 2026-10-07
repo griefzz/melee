@@ -1,4 +1,10 @@
 #include "ifnametag.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
+#ifdef PORT
+#include <port/gfx.h> // port_gfx_set_world_anchored
+#endif
 
 #include "forward.h"
 #include "ifall.h"
@@ -178,7 +184,16 @@ void fn_802FCAC4(HSD_GObj* gobj, intptr_t pass)
             }
         }
     } else if (HSD_CObjSetCurrent(gobj->hsd_obj)) {
+#ifdef PORT
+        // PORT: each tag and name is placed at its fighter's projected screen
+        // x (fn_802FCC44()), so it stays anchored under --hud stretch, where
+        // the fighter is drawn Hor+.
+        port_gfx_set_world_anchored(1);
         HSD_GObj_80390ED0(gobj, 7);
+        port_gfx_set_world_anchored(0);
+#else
+        HSD_GObj_80390ED0(gobj, 7);
+#endif
         HSD_CObjEndCurrent();
     }
 }
@@ -213,7 +228,16 @@ void fn_802FCC44(HSD_GObj* gobj)
         Player_GetPlayerState(*slot) && Player_GetStocks(*slot) &&
         (un_804D6D70[*slot] ||
          Player_GetNametagSlotID(*slot) != NAMETAG_DISABLED ||
+#ifdef PORT
+         // PORT: the nametag_hidden hook, for Achilles1515's Hide Nametag
+         // When Invisible, at +0x94 (the start of this branch): an invisible
+         // fighter's tag is hidden unless gm_8016B258() says to show it.
+         // Inert unless --slippi-general.
+         Player_80036058(*slot) || gm_8016B258(*slot)) &&
+        !port_hook_nametag_hidden(*slot))
+#else
          Player_80036058(*slot) || gm_8016B258(*slot)))
+#endif
     {
         HSD_JObjClearFlags(HSD_JObjGetChild(jobj), JOBJ_HIDDEN);
     } else {

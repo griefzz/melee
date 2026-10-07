@@ -237,7 +237,13 @@ void DevText_Printf(DevText* text, char* format, ...)
     char str[64];
     va_list args;
     va_start(args, format);
+#ifdef PORT
+    // PORT: a size of -1 is unbounded to MSL and over INT_MAX to a host C
+    // library; see hsd_3A64.c.
+    vsnprintf(str, sizeof(str), format, args);
+#else
     vsnprintf(str, -1, format, args);
+#endif
     va_end(args);
     DevText_Print(text, str);
 }

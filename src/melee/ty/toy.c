@@ -1,4 +1,7 @@
 #include "toy.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <Runtime/platform.h>
 
@@ -55,6 +58,58 @@
 #include <sysdolphin/baselib/state.h>
 #include <sysdolphin/baselib/tobj.h>
 #include <sysdolphin/baselib/wobj.h>
+#if defined(PORT) || defined(LINT)
+// PORT: Toy26B8_2 and ToyDataX8 are the front of an HSD_GObj written out in
+// console byte offsets (ty/types.h). This is the proof, spelled twice: the
+// STATIC_ASSERTs compile under LINT for the console and are empty in the
+// port build, and the _Static_asserts compile in the port build. A layout
+// written under PORT is proved by compiling both targets, not by the
+// transcription that produced it.
+STATIC_ASSERT(offsetof(struct Toy26B8_2, hsd_obj) == offsetof(HSD_GObj, hsd_obj));
+STATIC_ASSERT(offsetof(struct ToyDataX8, x28) == offsetof(HSD_GObj, hsd_obj));
+#ifdef PORT
+_Static_assert(offsetof(struct Toy26B8_2, hsd_obj) ==
+                   offsetof(HSD_GObj, hsd_obj),
+               "Toy26B8_2 must stay a prefix of HSD_GObj");
+_Static_assert(offsetof(struct ToyDataX8, x28) ==
+                   offsetof(HSD_GObj, hsd_obj),
+               "ToyDataX8 must stay a prefix of HSD_GObj");
+#endif
+
+// PORT: ToyEntryData, ToySubStructS_ and Ty25Entry are three more views of
+// one ToyListEntry, the display list's entries, reached through a
+// differently typed pointer in each place that uses them. On the console
+// they agree for free; all three write the entry's leading pointers as byte
+// pads, which is the spelling that stops being true here.
+STATIC_ASSERT(offsetof(ToyEntryData, x14) ==
+              offsetof(struct ToyListEntry, archive));
+STATIC_ASSERT(offsetof(struct ToySubStructS_, x10) ==
+              offsetof(struct ToyListEntry, trophy_id));
+STATIC_ASSERT(offsetof(struct Ty25Entry, x14) ==
+              offsetof(struct ToyListEntry, archive));
+STATIC_ASSERT(sizeof(struct Ty25Entry) == sizeof(struct ToyListEntry));
+#endif
+#ifdef PORT
+_Static_assert(offsetof(ToyEntryData, x14) ==
+                   offsetof(struct ToyListEntry, archive),
+               "ToyEntryData must agree with ToyListEntry");
+_Static_assert(offsetof(struct ToySubStructS_, x10) ==
+                   offsetof(struct ToyListEntry, trophy_id),
+               "ToySubStructS_ must agree with ToyListEntry");
+_Static_assert(offsetof(struct Ty25Entry, x14) ==
+                   offsetof(struct ToyListEntry, archive),
+               "Ty25Entry must agree with ToyListEntry");
+_Static_assert(sizeof(struct Ty25Entry) == sizeof(struct ToyListEntry),
+               "Ty25Entry must stride like ToyListEntry");
+#endif
+#ifdef PORT
+// PORT: _Toy_8030FA50() and Toy_80310660() index Toy6E68's first six slots
+// as void**.
+_Static_assert(offsetof(struct Toy6E68, x14) == 5 * sizeof(void*),
+               "Toy6E68::x14 must be void** state[5]");
+_Static_assert(offsetof(struct Toy6E68, x18) == 6 * sizeof(void*),
+               "Toy6E68's floats must follow six pointers");
+#endif
 
 typedef struct ToyUnkJObjData {
     /* 0x00 */ u8 pad_00[0x10];
@@ -109,6 +164,14 @@ bool un_80304470(void)
     if (sum <= count) {
         return 1;
     } else {
+#ifdef PORT
+        // PORT: the save_all_unlocked hook. Datel's Unlock All Characters
+        // and Stages code, `043044F0 38600001`, puts `li r3,1` over this
+        // `li r3,0` at +0x80.
+        if (port_hook_save_all_unlocked()) {
+            return 1;
+        }
+#endif
         return 0;
     }
 }
@@ -229,11 +292,32 @@ bool un_80304780(void)
     { 7, 65 }, { 6, 66 }, { 5, 67 }, { 4, 68 }, { 3, 69 },
     { 2, 70 }, { 0, 73 }, { 1, 88 }, { 8, 83 },
 };
+#ifdef PORT
+// PORT: the console's linker laid these five statics end to end (0x4A26B8,
+// 0x4A26C4, 0x4A2750, 0x4A284C, 0x4A2AA8), and this file walks them as one
+// object, `struct Toy26B8`, by byte offset from the first: `base + 0x194`,
+// `toy + 0x19E`, `*(s16*) (base + 0x3EC)` and a dozen more. Here they would
+// be independent objects anywhere, and the offsets would land in whatever
+// follows. Toy26B8 holds no pointers below 0x3F0, so its layout there is
+// the same on both targets; the storage is one Toy26B8 with the other names
+// pointing into it. Toy_804A2AA8 is `Toy26B8::x3F0_u.anim` (0x804A26B8 +
+// 0x3F0): _Toy_80307F64() reads it by one name and Toy_803087F4() writes it
+// by the other. See docs/design/verification.md, "Statics laid end to end".
+static struct Toy26B8 _Toy_region;
+#define _Toy_804A26B8 (*(struct _Toy_804A26B8_t*) &_Toy_region)
+static char* const _Toy_devtext_buf_804A26C4 = (char*) &_Toy_region + 0x00C;
+static char* const _Toy_devtext_buf_804A2750 = (char*) &_Toy_region + 0x098;
+u16* const Toy_804A284C = (u16*) ((char*) &_Toy_region + 0x194);
+// PORT: tydisplay.c reaches it too, so it is a pointer rather than a macro;
+// toy.h spells `Toy_804A2AA8` for both files.
+ToyAnimState* const Toy_804A2AA8_p = &_Toy_region.x3F0_u.anim;
+#else
 /* 4A26B8 */ static struct _Toy_804A26B8_t _Toy_804A26B8;
 /* 4A26C4 */ static char _Toy_devtext_buf_804A26C4[0x8C];
 /* 4A2750 */ static char _Toy_devtext_buf_804A2750[0xFC];
 /* 4A284C */ u16 Toy_804A284C[302];
 /* 4A2AA8 */ ToyAnimState Toy_804A2AA8;
+#endif
 /* 4D5A40 */ static GXColor _Toy_color_E2E2E2FF = { 0xE2, 0xE2, 0xE2, 0xFF };
 /* 4D5A44 */ static GXColor _Toy_color_FF8020FF = { 0xFF, 0x80, 0x20, 0xFF };
 
@@ -287,8 +371,10 @@ typedef struct TySortRow {
 /* 4D6E50 */ s8 _Toy_sbss_804D6E50;
 
 ASSERT_SIZE(_Toy_803B8910, 0x48);
+#ifndef PORT
 ASSERT_SIZE(_Toy_devtext_buf_804A26C4, 0x8C);
 ASSERT_SIZE(_Toy_devtext_buf_804A2750, 0xFC);
+#endif
 
 /// @todo .sdata2 order hack
 #ifdef MUST_MATCH
@@ -564,6 +650,14 @@ static inline u16* getTrophyFlags(void)
 
 s32 Toy_803048C0(int arg0)
 {
+#ifdef PORT
+    // PORT: the save_all_unlocked hook. Datel's Unlock All Characters and
+    // Stages code, `0430490C 38600063`, puts `li r3,99` over the `rlwinm` at
+    // +0x4C that masks the count to a byte: every trophy is owned 99 times.
+    if (port_hook_save_all_unlocked()) {
+        return 99;
+    }
+#endif
     return getTrophyFlags()[arg0] & 0xFF;
 }
 
@@ -2069,7 +2163,15 @@ void _Toy_8030715C(f32 cstick_x, f32 cstick_y)
     Vec3 up_vec;
     Vec3 left_vec;
     Vec3 angles;
+#ifdef PORT
+    // PORT: Toy6E68, the object's own type. TyCameraData_ puts x18..x20 at
+    // native 36..44, which is state[5], the gallery screen gobj, so the
+    // camera's yaw and distance would overwrite it and Toy_80310660() would
+    // free two floats.
+    Toy6E68* data;
+#else
     TyCameraData_* data;
+#endif
     ToyCameraControl* data2;
     HSD_LObj* lobj;
     s32 i;
@@ -2080,7 +2182,13 @@ void _Toy_8030715C(f32 cstick_x, f32 cstick_y)
     data = (void*) _Toy_sbss_804D6E68;
     data2 = Toy_sbss_804D6ED4;
     (void) data2;
+#ifdef PORT
+    // PORT: TyGObjX8_::x28 is hsd_obj at its console offset; here it is
+    // proc.
+    cobj = GET_COBJ((HSD_GObj*) data->x8);
+#else
     cobj = data->x8->x28;
+#endif
 
     HSD_CObjGetInterest(cobj, &interest);
     HSD_CObjGetInterest(cobj, &new_interest);
@@ -2168,7 +2276,18 @@ static inline void Toy_AddPanelAnims(HSD_JObj* jobj,
 
 void Toy_80307470(s32 arg0)
 {
+#if defined(PORT) || defined(LINT)
+    // PORT: `tg` is a ToyGlobalsS_* in the #else, one of four structs cast
+    // over the object at Toy_sbss_804D6ED8. On the console all four agree
+    // because every member is four bytes; here they agree only with the same
+    // member sequence, and these do not: the archive read below is at native
+    // 104 through ToyGlobalsS_ and 120 through ToyED8Data, the object's
+    // declared type, which every other reader uses. `archive` is
+    // ToyGlobalsS_::x50, at 0x50 in both.
+    ToyED8Data* tg;
+#else
     ToyGlobalsS_* tg;
+#endif
     char** label;
     HSD_Joint* joint[1];
     HSD_AnimJoint* anim[1];
@@ -2178,39 +2297,75 @@ void Toy_80307470(s32 arg0)
 
     PAD_STACK(16);
 
+#if defined(PORT) || defined(LINT)
+    tg = Toy_sbss_804D6ED8;
+
+    if (tg->archive == NULL) {
+#else
     tg = (ToyGlobalsS_*) Toy_sbss_804D6ED8;
 
     if (tg->x50 == NULL) {
+#endif
         OSReport("*** BG data aren't being loaded!\n");
         HSD_ASSERT(2481, 0);
     }
 
     if (tg->x0 != NULL) {
+#if defined(PORT) || defined(LINT)
+        HSD_GObjFree((HSD_GObj*) tg->x0);
+#else
         HSD_GObjFree(tg->x0);
+#endif
         tg->x0 = NULL;
     }
 
     label = &_Toy_803FDEA0[arg0];
+#if defined(PORT) || defined(LINT)
+    joint[0] = HSD_ArchiveGetPublicAs(HSD_Joint, tg->archive, *label);
+#else
     joint[0] = HSD_ArchiveGetPublicAs(HSD_Joint, tg->x50, *label);
+#endif
 
     if (joint[0] != NULL) {
+#if defined(PORT) || defined(LINT)
+        tg->x0 = (HSD_JObj**) GObj_Create(9, 9, 0);
+#else
         tg->x0 = GObj_Create(9, 9, 0);
+#endif
 
         loaded_jobj = HSD_JObjLoadJoint(joint[0]);
+#if defined(PORT) || defined(LINT)
+        anim[0] = HSD_ArchiveGetPublicAs(HSD_AnimJoint, tg->archive,
+#else
         anim[0] = HSD_ArchiveGetPublicAs(HSD_AnimJoint, tg->x50,
+#endif
                                          _Toy_803FDF3C[arg0].animjoint);
+#if defined(PORT) || defined(LINT)
+        matanim[0] = HSD_ArchiveGetPublicAs(HSD_MatAnimJoint, tg->archive,
+#else
         matanim[0] = HSD_ArchiveGetPublicAs(HSD_MatAnimJoint, tg->x50,
+#endif
                                             _Toy_803FDF3C[arg0].matanim_joint);
         Toy_AddPanelAnims(
             loaded_jobj,
+#if defined(PORT) || defined(LINT)
+            HSD_ArchiveGetPublicAs(HSD_ShapeAnimJoint, tg->archive,
+#else
             HSD_ArchiveGetPublicAs(HSD_ShapeAnimJoint, tg->x50,
+#endif
                                    _Toy_803FDF3C[arg0].shapeanim_joint),
             matanim[0], anim[0]);
 
         HSD_JObjReqAnimAll(loaded_jobj, 0.0f);
+#if defined(PORT) || defined(LINT)
+        HSD_GObjObject_80390A70((HSD_GObj*) tg->x0,
+                                (kind = HSD_GObj_JObjKind), loaded_jobj);
+        GObj_SetupGXLink((HSD_GObj*) tg->x0, HSD_GObj_JObjCallback, 0x3C, 0);
+#else
         HSD_GObjObject_80390A70(tg->x0, (kind = HSD_GObj_JObjKind),
                                 loaded_jobj);
         GObj_SetupGXLink(tg->x0, HSD_GObj_JObjCallback, 0x3C, 0);
+#endif
 
         lb_8001204C(loaded_jobj, (HSD_JObj**) &tg->x10, _Toy_803FE3F8, 9);
 
@@ -2255,11 +2410,25 @@ void _Toy_803075E8(s32 arg0)
         Toy_sbss_804D6ED8->x8->x28->x4->x4->x40 = 9;
     }
 
+#ifdef PORT
+    // PORT: a walk from the string _Toy_str_TyLight_dat into the statics the
+    // console laid after it; the callers pass a camera slot as the index.
+    // +0x1A4 (0x69 words past arg0 * 4) is `_Toy_803FDEBC`, six back-label
+    // names; the ModelNamesDesc half at +0x290 is `_Toy_803FDFA8[arg0]`
+    // below, already named, and the two arrays have the same six entries.
+    // Here the string is twelve bytes and the walk would read whatever
+    // follows it as a symbol name.
+    (void) data;
+    ptr = &_Toy_803FDEBC[arg0];
+    if (*ptr != NULL) {
+        joint = HSD_ArchiveGetPublicAs(HSD_Joint, td->archive, *ptr);
+#else
     /// @todo Layout-dependent: this is @c _Toy_803FDEBC[arg0], but indexing
     ///       it directly changes register allocation.
     ptr = (char**) (data + arg0 * 4);
     if (*(ptr += 0x69) != NULL) {
         joint = HSD_ArchiveGetPublicAs(HSD_Joint, td->archive, *ptr);
+#endif
         if (joint != NULL) {
             td->gobj = GObj_Create(4, 7, 0);
             jobj = HSD_JObjLoadJoint(joint);
@@ -2309,12 +2478,26 @@ void _Toy_803075E8(s32 arg0)
 void _Toy_80307828(int arg0)
 {
     Vec3 interest;
+#ifdef PORT
+    // PORT: Toy6E68, the object's own type. TyCameraData_ puts x18..x20 at
+    // native 36..44, which is state[5], the gallery screen gobj, so the
+    // camera's yaw and distance would overwrite it and Toy_80310660() would
+    // free two floats.
+    Toy6E68* data;
+#else
     TyCameraData_* data;
+#endif
     ToyCameraControl* data2;
     HSD_CObj* cobj;
 
     data = (void*) _Toy_sbss_804D6E68;
+#ifdef PORT
+    // PORT: TyGObjX8_::x28 is hsd_obj at its console offset; here it is
+    // proc.
+    cobj = GET_COBJ((HSD_GObj*) data->x8);
+#else
     cobj = data->x8->x28;
+#endif
     data2 = Toy_sbss_804D6ED4;
     interest = _Toy_803B8858;
 
@@ -2339,14 +2522,22 @@ void _Toy_80307828(int arg0)
 
 void _Toy_803078E4(void)
 {
+#if defined(PORT) || defined(LINT)
+    ToyED8Data* data; // PORT: not tyLightData*; see Toy_80307470
+#else
     struct tyLightData* data;
+#endif
     HSD_SObjDesc* syms[7];
     PosArrayFull pos_en;
     PosArrayFull pos_jp;
     HSD_SObj* sobj;
     s32 i;
 
+#if defined(PORT) || defined(LINT)
+    data = Toy_sbss_804D6ED8;
+#else
     data = (struct tyLightData*) Toy_sbss_804D6ED8;
+#endif
 
     pos_en = _Toy_803B8864;
     pos_jp = _Toy_803B889C;
@@ -2366,11 +2557,21 @@ void _Toy_803078E4(void)
             _Toy_803FE108[4], &syms[5], _Toy_803FE108[5], &syms[6],
             _Toy_803FE108[6], NULL);
 
+#if defined(PORT) || defined(LINT)
+        data->gobj2 = (Toy26B8_2*) GObj_Create(5, 6, 0);
+        GObj_SetupGXLink((HSD_GObj*) data->gobj2, HSD_SObjLib_803A49E0, 0x38, 0);
+#else
         data->x0C = GObj_Create(5, 6, 0);
         GObj_SetupGXLink(data->x0C, HSD_SObjLib_803A49E0, 0x38, 0);
+#endif
 
         for (i = 0; i < 7; i++) {
+#if defined(PORT) || defined(LINT)
+            sobj = HSD_SObjLib_803A477C((HSD_GObj*) data->gobj2, syms[i], 0, 0,
+                                        0x80, 0);
+#else
             sobj = HSD_SObjLib_803A477C(data->x0C, syms[i], 0, 0, 0x80, 0);
+#endif
             if (sobj != NULL) {
                 if (lbLang_IsSavedLanguageJP() != 0) {
                     sobj->x10 = (f32) pos_jp.a[i].xy[0];
@@ -2665,7 +2866,11 @@ void Toy_803083D8(HSD_JObj* jobj, s32 arg1)
 void _Toy_803084A0(s32 arg0)
 {
     volatile GXColor color;
+#if defined(PORT) || defined(LINT)
+    TyDisplayData* display; // PORT: not tyDispData*; see TyDisplayData
+#else
     tyDispData* display;
+#endif
     HSD_Text* text;
     s32 one;
     s32 id;
@@ -2673,101 +2878,233 @@ void _Toy_803084A0(s32 arg0)
     PAD_STACK(72);
 
     id = arg0;
+#if defined(PORT) || defined(LINT)
+    display = Toy_sbss_804D6EE0; // PORT: not tyDispData*; see TyDisplayData
+#else
     display = (tyDispData*) Toy_sbss_804D6EE0;
+#endif
     color = _Toy_color_FFBA00FF;
 
+#if defined(PORT) || defined(LINT)
+    if (display->texts[0] == NULL) {
+        display->texts[0] = HSD_SisLib_803A5ACC(0, _Toy_sbss_804D6E70, 0.9F,
+#else
     if (display->x144 == NULL) {
         display->x144 = HSD_SisLib_803A5ACC(0, _Toy_sbss_804D6E70, 0.9F,
+#endif
                                             -10.9F, 0.0F, 384.0F, 64.0F);
         one = 1;
+#if defined(PORT) || defined(LINT)
+        text = display->texts[0];
+#else
         text = display->x144;
+#endif
         text->default_fitting = one;
+#if defined(PORT) || defined(LINT)
+        text = display->texts[0];
+#else
         text = display->x144;
+#endif
         text->default_alignment = one;
+#if defined(PORT) || defined(LINT)
+        text = *(HSD_Text* volatile*) &display->texts[0];
+#else
         text = *(HSD_Text* volatile*) &display->x144;
+#endif
         text->text_color = color;
         if (lbLang_IsSavedLanguageJP()) {
+#if defined(PORT) || defined(LINT)
+            text = display->texts[0];
+#else
             text = display->x144;
+#endif
             text->font_size.x = 0.044F;
             text->font_size.y = 0.103F;
+#if defined(PORT) || defined(LINT)
+            text = display->texts[0];
+#else
             text = display->x144;
+#endif
             text->x34.x = 2.0F;
             text->x34.y = 1.0F;
         } else {
+#if defined(PORT) || defined(LINT)
+            text = display->texts[0];
+#else
             text = display->x144;
+#endif
             text->font_size.x = 0.044F;
             text->font_size.y = 0.103F;
+#if defined(PORT) || defined(LINT)
+            display->texts[0]->default_kerning = one;
+            text = display->texts[0];
+#else
             display->x144->default_kerning = one;
             text = display->x144;
+#endif
             text->x34.x = 1.75F;
             text->x34.y = 1.0F;
         }
     }
+#if defined(PORT) || defined(LINT)
+    HSD_SisLib_803A6368(display->texts[0], Toy_803063D4(id, 2, 0x128));
+
+    if (display->texts[1] == NULL) {
+#else
     HSD_SisLib_803A6368(display->x144, Toy_803063D4(id, 2, 0x128));
 
     if (display->x148 == NULL) {
+#endif
         if (lbLang_IsSavedLanguageJP()) {
+#if defined(PORT) || defined(LINT)
+            display->texts[1] = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E74, 0.2F,
+#else
             display->x148 = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E74, 0.2F,
+#endif
                                                 -5.1F, 17.2F, 384.0F, 384.0F);
+#if defined(PORT) || defined(LINT)
+            text = display->texts[1];
+#else
             text = display->x148;
+#endif
             text->font_size.x = 0.035F;
             text->font_size.y = 0.034F;
         } else {
+#if defined(PORT) || defined(LINT)
+            display->texts[1] = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E74, 0.2F,
+#else
             display->x148 = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E74, 0.2F,
+#endif
                                                 -5.0F, 17.2F, 384.0F, 384.0F);
+#if defined(PORT) || defined(LINT)
+            text = display->texts[1];
+#else
             text = display->x148;
+#endif
             text->font_size.x = 0.034F;
             text->font_size.y = 0.033F;
+#if defined(PORT) || defined(LINT)
+            text = display->texts[1];
+#else
             text = display->x148;
+#endif
             text->x34.x = 0.7F;
             text->x34.y = 0.7F;
         }
+#if defined(PORT) || defined(LINT)
+        text = display->texts[1];
+#else
         text = display->x148;
+#endif
         text->default_fitting = 1;
+#if defined(PORT) || defined(LINT)
+        text = display->texts[1];
+#else
         text = display->x148;
+#endif
         text->default_kerning = 1;
     }
+#if defined(PORT) || defined(LINT)
+    HSD_SisLib_803A6368(display->texts[1], Toy_803063D4(id, 2, 0x374));
+
+    if (display->texts[2] == NULL) {
+#else
     HSD_SisLib_803A6368(display->x148, Toy_803063D4(id, 2, 0x374));
 
     if (display->x14C == NULL) {
+#endif
         if (lbLang_IsSavedLanguageJP()) {
+#if defined(PORT) || defined(LINT)
+            display->texts[2] = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E78, 0.7F,
+#else
             display->x14C = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E78, 0.7F,
+#endif
                                                 7.9F, 17.2F, 384.0F, 64.0F);
+#if defined(PORT) || defined(LINT)
+            display->texts[3] = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E7C, 0.7F,
+#else
             display->x150 = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E7C, 0.7F,
+#endif
                                                 9.0F, 17.2F, 384.0F, 64.0F);
+#if defined(PORT) || defined(LINT)
+            text = display->texts[2];
+#else
             text = display->x14C;
+#endif
             text->font_size.x = 0.03F;
             text->font_size.y = 0.03F;
+#if defined(PORT) || defined(LINT)
+            text = display->texts[3];
+#else
             text = display->x150;
+#endif
             text->font_size.x = 0.03F;
             text->font_size.y = 0.03F;
         } else {
+#if defined(PORT) || defined(LINT)
+            display->texts[2] = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E78, 0.7F,
+#else
             display->x14C = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E78, 0.7F,
+#endif
                                                 7.9F, 17.2F, 384.0F, 64.0F);
+#if defined(PORT) || defined(LINT)
+            display->texts[3] = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E7C, 0.7F,
+#else
             display->x150 = HSD_SisLib_803A5ACC(3, _Toy_sbss_804D6E7C, 0.7F,
+#endif
                                                 9.0F, 17.2F, 384.0F, 64.0F);
+#if defined(PORT) || defined(LINT)
+            text = display->texts[2];
+#else
             text = display->x14C;
+#endif
             text->font_size.x = 0.03F;
             text->font_size.y = 0.03F;
+#if defined(PORT) || defined(LINT)
+            text = display->texts[3];
+#else
             text = display->x150;
+#endif
             text->font_size.x = 0.03F;
             text->font_size.y = 0.03F;
         }
+#if defined(PORT) || defined(LINT)
+        display->texts[2]->default_kerning = 1;
+        display->texts[3]->default_kerning = 1;
+        text = display->texts[2];
+#else
         display->x14C->default_kerning = 1;
         display->x150->default_kerning = 1;
         text = display->x14C;
+#endif
         text->x34.x = 1.0F;
         text->x34.y = 1.0F;
+#if defined(PORT) || defined(LINT)
+        text = display->texts[3];
+#else
         text = display->x150;
+#endif
         text->x34.x = 1.0F;
         text->x34.y = 1.0F;
+#if defined(PORT) || defined(LINT)
+        display->texts[2]->default_fitting = 1;
+        display->texts[3]->default_fitting = 1;
+        display->texts[2]->default_alignment = 0;
+        display->texts[3]->default_alignment = 0;
+#else
         display->x14C->default_fitting = 1;
         display->x150->default_fitting = 1;
         display->x14C->default_alignment = 0;
         display->x150->default_alignment = 0;
+#endif
     }
+#if defined(PORT) || defined(LINT)
+    HSD_SisLib_803A6368(display->texts[2], Toy_803063D4(id, 0x128, 0x37A));
+    HSD_SisLib_803A6368(display->texts[3], Toy_803063D4(id, 0x24E, 0x380));
+#else
     HSD_SisLib_803A6368(display->x14C, Toy_803063D4(id, 0x128, 0x37A));
     HSD_SisLib_803A6368(display->x150, Toy_803063D4(id, 0x24E, 0x380));
+#endif
 }
 
 HSD_GObj* Toy_803087F4(void* arg0)
@@ -2892,12 +3229,23 @@ void _Toy_80308DC8(HSD_CObj* cobj)
 {
     Vec3 interest;
     Vec3 eye_pos;
+#ifdef PORT
+    // PORT: Toy6E68, the object's own type. un_804D6E68_t::x18 is native
+    // 24, the low half of the xC gobj, so the pitch would read half a
+    // pointer.
+    Toy6E68* temp_r30;
+#else
     un_804D6E68_t* temp_r30;
+#endif
     ToyAnimState* temp_r31;
     f32 temp_f1;
 
     temp_r31 = &Toy_804A2AA8;
+#ifdef PORT
+    temp_r30 = _Toy_sbss_804D6E68;
+#else
     temp_r30 = (un_804D6E68_t*) _Toy_sbss_804D6E68;
+#endif
 
     HSD_CObjGetInterest(cobj, &interest);
     HSD_CObjGetEyePosition(cobj, &eye_pos);
@@ -5245,6 +5593,13 @@ void _Toy_8030FE48(TyDisplayData* data, s32 arg1)
         ptr += TY_SORT_KEY_COUNT;
         sort_idx += 1;
     }
+#ifdef PORT
+    // PORT: the toy_gallery_selection hook; --toy answers it
+    // (port/game/debug/start_flags.c).
+    data->selectedIdx = (s16) port_hook_toy_gallery_selection(
+        data->selectedIdx, Toy_sbss_804D6EDC, _Toy_GetTrophyTotal(toy));
+    *sel = data->selectedIdx;
+#endif
 
     count = _Toy_GetTrophyTotal(toy);
     entry_count = count;
@@ -5376,11 +5731,20 @@ static inline void toy_toggle_flag(Toy26B8* toy)
 {
     s16 idx;
     s16 idx2;
+#if defined(PORT) || defined(LINT)
+    TyDisplayData* tg6; // PORT: not ToyGlobalsS_*; see TyDisplayData
+#else
     ToyGlobalsS_* tg6;
+#endif
     u16* flags;
 
+#if defined(PORT) || defined(LINT)
+    tg6 = Toy_sbss_804D6EE0;
+    idx = Toy_sbss_804D6EDC[tg6->selectedIdx];
+#else
     tg6 = (ToyGlobalsS_*) Toy_sbss_804D6EE0;
     idx = Toy_sbss_804D6EDC[tg6->x154];
+#endif
 
     if (gm_IsCurrently1PMode() != 0 ||
         gm_GetCurrentGameMode() == GM_TOY_LOTTERY)
@@ -5391,8 +5755,13 @@ static inline void toy_toggle_flag(Toy26B8* toy)
     }
 
     if (flags[idx] & 0x8000) {
+#if defined(PORT) || defined(LINT)
+        tg6 = Toy_sbss_804D6EE0;
+        idx2 = Toy_sbss_804D6EDC[tg6->selectedIdx];
+#else
         tg6 = (ToyGlobalsS_*) Toy_sbss_804D6EE0;
         idx2 = Toy_sbss_804D6EDC[tg6->x154];
+#endif
 
         if (gm_IsCurrently1PMode() != 0 ||
             gm_GetCurrentGameMode() == GM_TOY_LOTTERY)
@@ -5417,7 +5786,11 @@ static inline void toy_make_gobj(void)
     tg3->x4 = 1;
 }
 
+#if defined(PORT) || defined(LINT)
+static inline void toy_sobj_loop(ToyED8Data* tg2, HSD_SObjDesc** syms)
+#else
 static inline void toy_sobj_loop(ToyGlobalsS_* tg2, HSD_SObjDesc** syms)
+#endif
 {
     s32 i;
     HSD_SObj* sobj;
@@ -5427,7 +5800,12 @@ static inline void toy_sobj_loop(ToyGlobalsS_* tg2, HSD_SObjDesc** syms)
     two = 2.0f;
     one = 1;
     for (i = 0; i < 3; i++) {
+#if defined(PORT) || defined(LINT)
+        sobj = HSD_SObjLib_803A477C((HSD_GObj*) tg2->x8, syms[i], 0, 0, 0x80,
+                                    0);
+#else
         sobj = HSD_SObjLib_803A477C(tg2->x8, syms[i], 0, 0, 0x80, 0);
+#endif
         sobj->x1C = two;
         sobj->x20 = two;
         sobj->x40 = one;
@@ -5437,25 +5815,58 @@ static inline void toy_sobj_loop(ToyGlobalsS_* tg2, HSD_SObjDesc** syms)
 void Toy_80310324(void)
 {
     Toy26B8* toy;
+#if defined(PORT) || defined(LINT)
+    // PORT: tg and tg2 address Toy_sbss_804D6ED8, whose declared type is
+    // ToyED8Data; tg4 below addresses another object and keeps
+    // ToyGlobalsS_. See Toy_80307470().
+    ToyED8Data* tg;
+    ToyED8Data* tg2;
+#else
     ToyGlobalsS_* tg;
     ToyGlobalsS_* tg2;
+#endif
     ToyGlobalsS_* tg4;
+#ifdef PORT
+    // PORT: Toy6E68, the object's own type. ToyGlobalsS_::x58 is native
+    // 120, past the end of this object and not its x58.
+    Toy6E68* tg5;
+#else
     ToyGlobalsS_* tg5;
+#endif
+#if defined(PORT) || defined(LINT)
+    TyDisplayData* tg6; // PORT: not ToyGlobalsS_*; see TyDisplayData
+    ToyListEntry* sub; // PORT: not ToySubStructS_*, a third view of it
+#else
     ToyGlobalsS_* tg6;
     ToySubStructS_* sub;
+#endif
     HSD_SObjDesc* syms[3];
     UNK_T sym[1];
     s32 var_r0;
     HSD_SObj* sobj;
 
     toy = (void*) &_Toy_804A26B8;
+#if defined(PORT) || defined(LINT)
+    tg = Toy_sbss_804D6ED8;
+#else
     tg = (ToyGlobalsS_*) Toy_sbss_804D6ED8;
+#endif
 
+#ifdef PORT
+    // PORT: the toy_gallery_entering hook; --toy answers it
+    // (port/game/debug/start_flags.c).
+    port_hook_toy_gallery_entering();
+#endif
     _Toy_8030663C();
     Toy_803067BC(toy->x195, toy->x196);
 
+#if defined(PORT) || defined(LINT)
+    if (tg->archive == NULL) {
+        tg->archive = lbArchive_LoadSymbols(
+#else
     if (tg->x50 == NULL) {
         tg->x50 = lbArchive_LoadSymbols(
+#endif
             lbLang_IsSavedLanguageJP() ? "TyMnView.dat" : "TyMnView.usd",
             sym + 4, _Toy_803FDEA0[0], NULL);
     }
@@ -5466,13 +5877,22 @@ void Toy_80310324(void)
     Toy_80306D70(0);
     _Toy_80307018();
 
+#if defined(PORT) || defined(LINT)
+    if ((tg2 = Toy_sbss_804D6ED8)->x54 == NULL) {
+#else
     if ((tg2 = (ToyGlobalsS_*) Toy_sbss_804D6ED8)->x54 == NULL) {
+#endif
         tg2->x54 = lbArchive_LoadSymbols(
             "TyMnBg.dat", &syms[0], _Toy_803FE038[0], &syms[1],
             _Toy_803FE038[1], &syms[2], _Toy_803FE038[2], 0);
 
+#if defined(PORT) || defined(LINT)
+        tg2->x8 = (ToyDataX8*) GObj_Create(4, 5, 0);
+        GObj_SetupGXLink((HSD_GObj*) tg2->x8, HSD_SObjLib_803A49E0, 0x32, 0);
+#else
         tg2->x8 = GObj_Create(4, 5, 0);
         GObj_SetupGXLink(tg2->x8, HSD_SObjLib_803A49E0, 0x32, 0);
+#endif
 
         toy_sobj_loop(tg2, syms);
     }
@@ -5498,11 +5918,25 @@ void Toy_80310324(void)
     if (var_r0 != 0) {
         memzero(&toy->x3F0_u.anim, sizeof(toy->x3F0_u.anim));
         _Toy_8030FE48(Toy_sbss_804D6EE0, 0);
+#if defined(PORT) || defined(LINT)
+        tg6 = Toy_sbss_804D6EE0;
+        Toy_803087F4(tg6->selected_entry);
+#else
         tg6 = (ToyGlobalsS_*) Toy_sbss_804D6EE0;
         Toy_803087F4(tg6->x140);
+#endif
 
         toy_toggle_flag(toy);
 
+#if defined(PORT) || defined(LINT)
+        tg6 = Toy_sbss_804D6EE0;
+        sub = tg6->selected_entry;
+        _Toy_803084A0(sub->trophy_id);
+
+        tg6 = Toy_sbss_804D6EE0;
+        sub = tg6->selected_entry;
+        Toy_803083D8(tg->x30, sub->trophy_id);
+#else
         tg6 = (ToyGlobalsS_*) Toy_sbss_804D6EE0;
         sub = tg6->x140;
         _Toy_803084A0(sub->x10);
@@ -5510,13 +5944,18 @@ void Toy_80310324(void)
         tg6 = (ToyGlobalsS_*) Toy_sbss_804D6EE0;
         sub = tg6->x140;
         Toy_803083D8(tg->x30, sub->x10);
+#endif
 
         toy_make_gobj();
     }
 
     _Toy_80307828(0);
 
+#ifdef PORT
+    tg5 = _Toy_sbss_804D6E68;
+#else
     tg5 = (ToyGlobalsS_*) _Toy_sbss_804D6E68;
+#endif
     tg5->x58 = 0x95E;
 
     _Toy_8030715C(0.0f, 0.0f);
@@ -5537,8 +5976,13 @@ void Toy_80310660(s32 arg0)
     TyCleanupObj* ty28;
     u8* ty27;
     void* ty26;
+#if defined(PORT) || defined(LINT)
+    TyDisplayData* ty25; // PORT: not ToyGlobalsS_*; see TyDisplayData
+    ToyED8Data* ty30; // PORT: not tyLightData*; see Toy_80307470
+#else
     ToyGlobalsS_* ty25;
     struct tyLightData* ty30;
+#endif
 
     state = (u8*) &_Toy_804A26B8;
     arg = arg0;
@@ -5546,8 +5990,13 @@ void Toy_80310660(s32 arg0)
     ty31 = (void**) _Toy_sbss_804D6E68;
     ty28 = (TyCleanupObj*) Toy_sbss_804D6ED4;
     ty26 = _Toy_sbss_804D6E6C;
+#if defined(PORT) || defined(LINT)
+    ty25 = Toy_sbss_804D6EE0;
+    ty30 = Toy_sbss_804D6ED8;
+#else
     ty25 = (ToyGlobalsS_*) Toy_sbss_804D6EE0;
     ty30 = (struct tyLightData*) Toy_sbss_804D6ED8;
+#endif
 
     if (gm_IsCurrently1PMode() != 0 ||
         gm_GetCurrentGameMode() == GM_TOY_LOTTERY)
@@ -5559,7 +6008,11 @@ void Toy_80310660(s32 arg0)
 
     if (idx != 0) {
         u16* ptr;
+#if defined(PORT) || defined(LINT)
+        idx = Toy_sbss_804D6EDC[ty25->selectedIdx];
+#else
         idx = Toy_sbss_804D6EDC[ty25->x154];
+#endif
 
         if (gm_IsCurrently1PMode() != 0 ||
             gm_GetCurrentGameMode() == GM_TOY_LOTTERY)
@@ -5570,7 +6023,11 @@ void Toy_80310660(s32 arg0)
         }
 
         if (ptr[idx] & 0x8000) {
+#if defined(PORT) || defined(LINT)
+            idx = Toy_sbss_804D6EDC[ty25->selectedIdx];
+#else
             idx = Toy_sbss_804D6EDC[ty25->x154];
+#endif
 
             if (gm_IsCurrently1PMode() != 0 ||
                 gm_GetCurrentGameMode() == GM_TOY_LOTTERY)
@@ -5583,8 +6040,13 @@ void Toy_80310660(s32 arg0)
             *ptr ^= 0x8000;
         }
 
+#if defined(PORT) || defined(LINT)
+        *(s16*) (state + 0x3E8) = ty25->selectedIdx;
+        *(s16*) (state + 0x3EA) = ty25->selected_entry->trophy_id;
+#else
         *(s16*) (state + 0x3E8) = ty25->x154;
         *(s16*) (state + 0x3EA) = ty25->x140->x10;
+#endif
     }
 
     if (arg != 0) {
@@ -5592,10 +6054,17 @@ void Toy_80310660(s32 arg0)
         s32 count;
 
         HSD_SisLib_803A5E70();
+#if defined(PORT) || defined(LINT)
+        ty25->texts[3] = NULL;
+        ty25->texts[2] = NULL;
+        ty25->texts[1] = NULL;
+        ty25->texts[0] = NULL;
+#else
         ty25->x150 = NULL;
         ty25->x14C = NULL;
         ty25->x148 = NULL;
         ty25->x144 = NULL;
+#endif
 
         if (gm_IsCurrently1PMode() != 0 ||
             gm_GetCurrentGameMode() == GM_TOY_LOTTERY)
@@ -5631,18 +6100,38 @@ void Toy_80310660(s32 arg0)
             lbArchive_80016EFC(ty30->x58);
             arg = 0;
             ty30->x58 = (void*) arg;
+#if defined(PORT) || defined(LINT)
+            if (ty30->gobj2 != NULL) {
+                HSD_GObjFree((HSD_GObj*) ty30->gobj2);
+                ty30->gobj2 = NULL;
+#else
             if (ty30->x0C != NULL) {
                 HSD_GObjFree(ty30->x0C);
                 ty30->x0C = (void*) arg;
+#endif
             }
         }
 
+#ifdef PORT
+        // PORT: ty27 is Toy_804A2AA8 (0x3F0 into the region), and 0x4 and
+        // 0x8 are its jobj pair: pointers, eight bytes apart here. The
+        // console's offsets would land on the top half of gobj and on
+        // jobj[0], and leave jobj[1] for the next trophy scene to free again.
+        (void) ty27;
+        if (Toy_804A2AA8.gobj != NULL) {
+            HSD_GObjFree(Toy_804A2AA8.gobj);
+            Toy_804A2AA8.gobj = NULL;
+            Toy_804A2AA8.jobj[1] = NULL;
+            Toy_804A2AA8.jobj[0] = NULL;
+        }
+#else
         if (*(void**) ty27 != NULL) {
             HSD_GObjFree(*(void**) ty27);
             *(void**) ty27 = NULL;
             *(void**) (ty27 + 0x8) = NULL;
             *(void**) (ty27 + 0x4) = NULL;
         }
+#endif
 
         if (*(void**) ty26 != NULL) {
             HSD_GObjFree(*(void**) ty26);
@@ -5667,9 +6156,15 @@ void Toy_80310660(s32 arg0)
             HSD_FogSet(NULL);
         }
 
+#if defined(PORT) || defined(LINT)
+        if (ty30->gobj2 != NULL) {
+            HSD_GObjFree((HSD_GObj*) ty30->gobj2);
+            ty30->gobj2 = NULL;
+#else
         if (ty30->x0C != NULL) {
             HSD_GObjFree(ty30->x0C);
             ty30->x0C = NULL;
+#endif
         }
 
         if (ty31[0] != NULL) {

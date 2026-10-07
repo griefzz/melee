@@ -1,4 +1,7 @@
 #include "plbonuslib.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned; docs/decomp-patches.md
+#endif
 
 #include <Runtime/platform.h>
 
@@ -1578,14 +1581,28 @@ int pl_80040B18(int arg0)
 
 unsigned int pl_80040B3C(int arg0)
 {
+#ifdef PORT
+    // PORT: a sum of hits' damage, each scaled by data; the console's
+    // __cvt_fp2unsigned makes a negative 0, where x86 wraps. See
+    // docs/design/verification.md, "Floats converted to unsigned".
+    return port_cvt_fp2unsigned(
+        Player_GetStaleMoveTableIndexPtr2(arg0)->x0_staleMoveTable.xC6C);
+#else
     return (unsigned int) Player_GetStaleMoveTableIndexPtr2(arg0)
         ->x0_staleMoveTable.xC6C;
+#endif
 }
 
 unsigned int pl_80040B64(int arg0)
 {
+#ifdef PORT
+    // PORT: a sum of damage taken, some of it from data; as above.
+    return port_cvt_fp2unsigned(
+        Player_GetStaleMoveTableIndexPtr2(arg0)->x0_staleMoveTable.xC60);
+#else
     return (unsigned int) Player_GetStaleMoveTableIndexPtr2(arg0)
         ->x0_staleMoveTable.xC60;
+#endif
 }
 
 void pl_80040B8C(int slot, int arg1, int arg2)

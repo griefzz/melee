@@ -1,4 +1,7 @@
 #include "eflib.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned; docs/decomp-patches.md
+#endif
 
 #include <math.h>
 #include <stdarg.h>
@@ -452,10 +455,21 @@ EF_Effect* efLib_Create(int gfx_id, HSD_GObj* parent_gobj)
             u8 kind = HSD_GObj_JObjKind;
             HSD_GObjObject_80390A70(effect->gobj, kind, jobj);
         }
+#ifdef PORT
+        // PORT: desc->lifetime is an unclamped float from the effect's file.
+        // A negative one converts to 0 on the console (0 % 10, and "never
+        // expires") and wraps on x86 (a flag set and a 65535-frame lifetime).
+        // See docs/design/verification.md, "Floats converted to unsigned".
+        if (port_cvt_fp2unsigned(10.0F * desc->lifetime) % 10 != 0) {
+            lb_80011C18(jobj, 0x08000000);
+        }
+        effect->lifetime = port_cvt_fp2unsigned(desc->lifetime);
+#else
         if ((u32) (10.0F * desc->lifetime) % 10 != 0) {
             lb_80011C18(jobj, 0x08000000);
         }
         effect->lifetime = (u32) desc->lifetime;
+#endif
         if (effect->lifetime != 0) {
             ++effect->lifetime;
         }
@@ -964,16 +978,16 @@ static void (*particleCallbacks[3])(HSD_Particle* particle) = {
 // parent joint.
 void efLib_Cb_PtclAppSRTHook(HSD_Generator* gen)
 {
-    if (gen->cmdList == ptclref_804D0E5C[0][0x96]->cmdList) {
+    if (gen->cmdList == PS_CMDLIST(0, 0x96)->cmdList) {
         hsd_8039D1E4(gen, particleCallbacks);
     }
-    if (gen->cmdList == ptclref_804D0E5C[0][0x97]->cmdList) {
+    if (gen->cmdList == PS_CMDLIST(0, 0x97)->cmdList) {
         hsd_8039D1E4(gen, particleCallbacks);
     }
-    if (gen->cmdList == ptclref_804D0E5C[0][0x98]->cmdList) {
+    if (gen->cmdList == PS_CMDLIST(0, 0x98)->cmdList) {
         hsd_8039D1E4(gen, particleCallbacks);
     }
-    if (gen->cmdList == ptclref_804D0E5C[0][0x21B]->cmdList) {
+    if (gen->cmdList == PS_CMDLIST(0, 0x21B)->cmdList) {
         hsd_8039D1E4(gen, particleCallbacks);
     }
 }

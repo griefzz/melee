@@ -53,6 +53,50 @@
 /* 4A2D84 */ static HSD_GObj* _tyList_804A2D84[5];
 /* 4D6EE8 */ static s32 _tyList_804D6EE8;
 /* 4D6EEC */ static s32 _tyList_804D6EEC;
+#if defined(PORT) || defined(LINT)
+// PORT: two views in this file that agree on the console only because every
+// member is four bytes (ty/types.h): TyListRow is TyListArg by another name,
+// and TyListData is the front of the list camera's HSD_GObj. Spelled twice,
+// as in ty/toy.c: STATIC_ASSERT is the console's proof under LINT, and
+// _Static_assert the host's.
+STATIC_ASSERT(offsetof(struct TyListRow, jobj) ==
+              offsetof(struct TyListArg, jobjs));
+STATIC_ASSERT(offsetof(struct TyListRow, text0) ==
+              offsetof(struct TyListArg, texts));
+STATIC_ASSERT(offsetof(struct TyListRow, x24) ==
+              offsetof(struct TyListArg, x24));
+STATIC_ASSERT(offsetof(struct TyListRow, idx) ==
+              offsetof(struct TyListArg, idx));
+STATIC_ASSERT(offsetof(struct TyListRow, x28) ==
+              offsetof(struct TyListArg, x28));
+STATIC_ASSERT(offsetof(struct TyListRow, x30) ==
+              offsetof(struct TyListArg, x30));
+STATIC_ASSERT(offsetof(struct TyListData, cobj) ==
+              offsetof(HSD_GObj, hsd_obj));
+#endif
+#ifdef PORT
+_Static_assert(offsetof(struct TyListRow, jobj) ==
+                   offsetof(struct TyListArg, jobjs),
+               "TyListRow::jobj must be TyListArg::jobjs[0]");
+_Static_assert(offsetof(struct TyListRow, text0) ==
+                   offsetof(struct TyListArg, texts),
+               "TyListRow::text0 must be TyListArg::texts[0]");
+_Static_assert(offsetof(struct TyListRow, x24) ==
+                   offsetof(struct TyListArg, x24),
+               "TyListRow must agree with TyListArg");
+_Static_assert(offsetof(struct TyListRow, idx) ==
+                   offsetof(struct TyListArg, idx),
+               "TyListRow must agree with TyListArg");
+_Static_assert(offsetof(struct TyListRow, x28) ==
+                   offsetof(struct TyListArg, x28),
+               "TyListRow must agree with TyListArg");
+_Static_assert(offsetof(struct TyListRow, x30) ==
+                   offsetof(struct TyListArg, x30),
+               "TyListRow must agree with TyListArg");
+_Static_assert(offsetof(struct TyListData, cobj) ==
+                   offsetof(HSD_GObj, hsd_obj),
+               "TyListData must stay a prefix of HSD_GObj");
+#endif
 
 /// @todo .data order hack
 #ifdef MUST_MATCH
@@ -465,8 +509,25 @@ void _tyList_80313774(void)
 {
     TyListState* state = &_tyList_804A2AC0;
     TyModeState* mode = (TyModeState*) Toy_804A284C;
+#ifdef PORT
+    // PORT: TyDisplayData, the object's own type (types.h), as toy.c reads
+    // it. ToyGlobalsS_ reaches console 0x140 through a byte pad, but the
+    // thirteen list entries before it are pointer records, so
+    // selected_entry sits elsewhere here and x140 reads NULL.
+    TyDisplayData* disp = Toy_sbss_804D6EE0;
+#else
     ToyGlobalsS_* disp = (ToyGlobalsS_*) Toy_sbss_804D6EE0;
+#endif
+#ifdef PORT
+    // PORT: ToyED8Data, the object's own type, as in every other reader.
+    // TyArchiveData's pad[0x4C] stands for twelve of its pointers, so `data`
+    // (ToyED8Data::archive, console 0x50) is native 88, x24[2], a joint, and
+    // the row matanim below and the scene lights in tyList_803147C4() would
+    // be looked up in a JObj.
+    ToyED8Data* archive = Toy_sbss_804D6ED8;
+#else
     TyArchiveData* archive = (TyArchiveData*) Toy_sbss_804D6ED8;
+#endif
     TyListGobjEntry* state_tail = &_tyList_804A2D6C;
     TyListArg* entry;
     HSD_JObj* root_jobj;
@@ -493,11 +554,19 @@ void _tyList_80313774(void)
     if (Toy_GetTrophyTotal() <= 0xA) {
         state->entryCount = trophy_total + 2;
         entry_count = trophy_total + 2;
+#ifdef PORT
+        idx = Toy_803062BC(disp->selected_entry->prev->trophy_id);
+#else
         idx = Toy_803062BC(((ToyListEntry*) disp->x140)->prev->trophy_id);
+#endif
     } else {
         state->entryCount = 0xC;
         entry_count = 0xC;
+#ifdef PORT
+        idx = Toy_803062BC(disp->selected_entry->prev->trophy_id);
+#else
         idx = Toy_803062BC(((ToyListEntry*) disp->x140)->prev->trophy_id);
+#endif
     }
 
     for (i = 0; i < entry_count; i++) {
@@ -540,9 +609,15 @@ void _tyList_80313774(void)
         entry->jobjs[0] = _tyList_80313508(
             state->gobj, "ToyFigureListBase_Top_joint", 0.0f, pos, 0.0f);
         entry->jobjs[2] = HSD_JObjGetChild(entry->jobjs[0]);
+#ifdef PORT
+        Toy_80306A48(entry->jobjs[0], NULL,
+                     "ToyFigureListBase_Top_matanim_joint", NULL,
+                     archive->archive, 0);
+#else
         Toy_80306A48(entry->jobjs[0], NULL,
                      "ToyFigureListBase_Top_matanim_joint", NULL,
                      archive->data, 0);
+#endif
         entry->texts[0] = HSD_SisLib_803A5ACC(0, _tyList_804D6EE8, 0.0f, 0.0f,
                                               17.2f, 640.0f, 64.0f);
         entry->texts[1] = HSD_SisLib_803A5ACC(0, _tyList_804D6EE8, 0.0f, 0.0f,
@@ -857,13 +932,32 @@ void _tyList_8031438C(HSD_GObj* gobj)
                 HSD_AObjSetRate(archive->jobjs[0]->u.dobj->mobj->tobj->aobj,
                                 0.0f);
             }
+#ifdef PORT
+            // PORT: x0 holds the panel label's gobj (Toy_80307470() in
+            // toy.c), and word 10 of a gobj is hsd_obj only on the console;
+            // here x0[10] is user_data_remove_func, NULL.
+            HSD_JObjAnimAll(GET_JOBJ((HSD_GObj*) archive->x0));
+#else
             HSD_JObjAnimAll(archive->x0[10]);
+#endif
         } else {
+#ifdef PORT
+            // PORT: entry->x4 is the list camera (_tyList_8031457C()), and
+            // x20/x24 are the two words of its gxlink_prios at console 0x20.
+            // Here 0x20 is inside prev_gx, and a u64's halves are the other
+            // way round anyway, so the mask is stored whole: links 62, 57 and
+            // 52, 62 being the canvas the row texts are on
+            // (_tyList_804D6EE8).
+            if (entry->x4 != NULL) {
+                entry->x4->gxlink_prios = 0x4210000000000000ULL;
+            }
+#else
             TyListWaitData* wait_data = (TyListWaitData*) entry->x4;
             if (wait_data != NULL) {
                 wait_data->x24 = 0;
                 wait_data->x20 = 0x42100000;
             }
+#endif
             state->x290 = HSD_SisLib_803A6754(3, _tyList_804D6EEC);
             state->x290->pos_z = 17.2f;
             new_var = state->x290;
@@ -966,7 +1060,11 @@ void _tyList_8031457C(void)
 void tyList_803147C4(void)
 {
     TyListState* state;
+#ifdef PORT
+    ToyED8Data* archive; // PORT: not TyArchiveData*; see _tyList_80313774
+#else
     TyArchiveData* archive;
+#endif
     LightList** jobj;
     u8 new_var;
     HSD_GObj** gobj;
@@ -974,6 +1072,18 @@ void tyList_803147C4(void)
     memzero(&_tyList_804A2D6C, sizeof(_tyList_804A2D6C));
     _tyList_8031457C();
     memzero(&_tyList_804A2D84, sizeof(_tyList_804A2D84));
+#ifdef PORT
+    archive = Toy_sbss_804D6ED8;
+    gobj = _tyList_804A2D84;
+
+    if (archive->archive == NULL) {
+        OSReport("*** BG data aren't being loaded!\n");
+        OSPanic(__FILE__, 1590, "");
+    }
+
+    jobj = HSD_ArchiveGetPublicAs(LightList*, archive->archive,
+                                  "ScMenFigure_scene_lights");
+#else
     {
         TyArchiveData* loaded_archive = (TyArchiveData*) Toy_sbss_804D6ED8;
         TyArchiveData* archive_data = loaded_archive;
@@ -988,6 +1098,7 @@ void tyList_803147C4(void)
 
     jobj = HSD_ArchiveGetPublicAs(LightList*, archive->data,
                                   "ScMenFigure_scene_lights");
+#endif
     if (jobj != NULL) {
         *gobj = GObj_Create(2, 3, 0);
         HSD_GObjObject_80390A70(*gobj, new_var = HSD_GObj_LightKind,
@@ -1007,12 +1118,20 @@ void _tyList_803148E4(s32 arg0)
 {
     TyListState* state = &_tyList_804A2AC0;
     TyListGobjEntry* entry = &_tyList_804A2D6C;
+#ifdef PORT
+    ToyED8Data* archive; // PORT: not TyArchiveData*; see _tyList_80313774
+#else
     TyArchiveData* archive;
+#endif
     HSD_GObj** gobj_2C4;
     PAD_STACK(8);
 
     gobj_2C4 = _tyList_804A2D84;
+#ifdef PORT
+    archive = Toy_sbss_804D6ED8;
+#else
     archive = (TyArchiveData*) Toy_sbss_804D6ED8;
+#endif
 
     if (Toy_GetTrophyTotal() != 0) {
         if (arg0 != 0) {
@@ -1056,12 +1175,25 @@ void _tyList_803148E4(s32 arg0)
         HSD_SisLib_803A5E70();
     }
 
+#ifdef PORT
+    // PORT: TyArchiveData::gobj is ToyED8Data::x0, the panel label's gobj
+    // (Toy_80307470() in toy.c). It is at offset 0 in both, so the read
+    // agrees either way; it is spelled through the declared type so the
+    // object keeps one view.
+    if (archive->x0 != NULL) {
+        if (arg0 != 0) {
+            HSD_GObjFree((HSD_GObj*) archive->x0);
+        }
+        archive->x0 = NULL;
+    }
+#else
     if (archive->gobj != NULL) {
         if (arg0 != 0) {
             HSD_GObjFree(archive->gobj);
         }
         archive->gobj = NULL;
     }
+#endif
 
     if (*gobj_2C4 != NULL && arg0 != 0) {
         HSD_GObjFree(*gobj_2C4);

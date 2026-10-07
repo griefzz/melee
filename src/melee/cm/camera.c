@@ -1,4 +1,7 @@
 #include "camera.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <Runtime/platform.h>
 
@@ -918,7 +921,20 @@ void Camera_ApplyQuake(CameraBounds* bounds, CameraTransformState* state)
     f32 input_x;
     f32 input_y;
     f32 depth_ratio;
+#ifdef PORT
+    // PORT: the console code re-describes four consecutive statics as one
+    // struct and walks past the first three to reach the fourth. Their
+    // addresses are a link order the port does not control, and
+    // CameraModeCallbacks is twice as wide here (nine function pointers), so
+    // the walk would land short of the camera descriptor, read its viewport
+    // as zeros, and make viewport_y_scale below a division by zero and every
+    // viewing matrix NaN. The static walked to has a name, so it is used.
+    HSD_CameraDescPerspective* const port_desc = &cm_803BCB64;
+#define data_desc (*port_desc)
+#else
     struct CameraStaticData* data = (struct CameraStaticData*) &cm_803BCB18;
+#define data_desc (data->desc)
+#endif
 
     input_x = game_camera.quake_offset.x * game_camera.quake_scale;
     input_y = game_camera.quake_offset.y * game_camera.quake_scale;
@@ -935,12 +951,12 @@ void Camera_ApplyQuake(CameraBounds* bounds, CameraTransformState* state)
     half_view_height =
         bounds->z_pos * tanf(0.5f * (0.017453292f * state->fov));
     viewport_x_scale =
-        data->desc.aspect *
+        data_desc.aspect *
         (half_view_height /
-         (0.5f * (f32) (data->desc.viewport.xmax - data->desc.viewport.xmin)));
+         (0.5f * (f32) (data_desc.viewport.xmax - data_desc.viewport.xmin)));
     viewport_y_scale =
         half_view_height /
-        (0.5f * (f32) (data->desc.viewport.ymax - data->desc.viewport.ymin));
+        (0.5f * (f32) (data_desc.viewport.ymax - data_desc.viewport.ymin));
     depth_factor_y = Stage_GetCamZoomRate();
     depth_factor_x = Stage_GetCamMaxDepth() - depth_factor_y;
 
@@ -959,6 +975,7 @@ void Camera_ApplyQuake(CameraBounds* bounds, CameraTransformState* state)
                     depth_factor_y * (input_y * viewport_y_scale));
     game_camera.quake_offset.x = 0.0f;
     game_camera.quake_offset.y = 0.0f;
+#undef data_desc
 }
 
 void Camera_SetQuakeOffset(f32 x, f32 y)
@@ -2320,6 +2337,12 @@ void Camera_8002CB0C(CameraBounds* bounds)
 
     camera = &game_camera;
 
+#ifdef PORT
+    // PORT: the pause_camera_pan hook, for Achilles' C-Stick Panning while
+    // Paused, at +0x28 (the sign-extension of x2C5 just read): the pauser's
+    // c-stick pans the paused camera. Inert unless --slippi-general.
+    port_hook_pause_camera_pan(camera->x2C5, &camera->x314.x);
+#endif
     {
         s8 pauser_slot = camera->x2C5;
         if (pauser_slot == 5) {
@@ -2887,6 +2910,17 @@ bool Camera_8002E234(void)
     bool ret;
 
     ret = false;
+#ifdef PORT
+    // PORT: case 2 writes these only when x35C.orbit's b1/b2/b0 is set and
+    // reads them regardless, and the boss intros (ftMh_MS_343_801511FC() in
+    // ftmasterhandentry.c) leave b1 clear for 200 frames. The console reads a
+    // stale stack word, +0.0 or a MEM1 address, below 4.7e-38 as a float,
+    // and its eye stays level; here the read is whatever the caller left in
+    // xmm6, and a non-finite one makes the eye NaN and fires an assert in
+    // lbvector.c. 0.0f reproduces the console's eye bit for bit; the one
+    // stale distance, the state-5 snap, is overwritten in the same frame.
+    sp10 = spC = sp8 = 0.0f;
+#endif
     switch (game_camera.x341_b3_b4) {
     case 0:
     case 1:
@@ -3482,6 +3516,13 @@ void Camera_SetUpPauseCamera(s8 pauserSlot, s8 pauserId, s32 arg2)
     game_camera.x2D0.angle_left = Stage_GetCamAngleRadiansLeft();
     game_camera.x2D0.unk28 = Stage_GetPauseCamZPosMin();
     game_camera.x2D0.unk2C = Stage_GetPauseCamZPosMax();
+#ifdef PORT
+    // PORT: the pause_camera_limits hook, for strikebowler585's Unrestricted
+    // Camera while Paused: five floats written over +0x2EC..+0x2FC every
+    // frame, applied where the game writes them. Inert unless
+    // --slippi-general.
+    port_hook_pause_camera_limits(&game_camera.x2D0);
+#endif
     game_camera.x2D0.callback =
         (void (*)(Camera_x2D0*))(Event) Camera_SetBounds;
 
@@ -3665,6 +3706,9 @@ void Camera_8002F9E4(s8 arg0, s8 arg1)
     scale = getPauseScale();
     game_camera.x2D0.unk28 = scale * cm_803BCCA0.x94;
     game_camera.x2D0.unk2C = scale * cm_803BCCA0.x98;
+#ifdef PORT
+    port_hook_pause_camera_limits(&game_camera.x2D0); // PORT: as above
+#endif
     game_camera.x2D0.callback = (void (*)(Camera_x2D0*))(Event) fn_8002F908;
 
     {

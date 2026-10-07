@@ -4396,12 +4396,22 @@ bool mpLib_80054ED8(int line_id)
     return true;
 }
 
+#ifdef PORT
+// PORT: a CollLine is two u32s on the console and four here (it holds an
+// 8-byte pointer), so the stride is its size.
+#define MPLIB_FLAGS_STRIDE ((int) (sizeof(CollLine) / sizeof(u32)))
+_Static_assert(sizeof(CollLine) % sizeof(u32) == 0,
+               "flags_base[id * MPLIB_FLAGS_STRIDE] must land on a flags field");
+#else
+#define MPLIB_FLAGS_STRIDE 2
+#endif
+
 static inline int mpLineGetNextFrom(MapLine* line, const u32* flags_base)
 {
     int result = line->next_id1;
 
     if (result != -1) {
-        u32 flags = flags_base[result * 2];
+        u32 flags = flags_base[result * MPLIB_FLAGS_STRIDE];
 
         if ((flags & LINE_FLAG_ENABLED) && !(flags & LINE_FLAG_HIDDEN)) {
             CollVtx* v1 = &groundCollVtx[line->v1_idx];
@@ -4421,7 +4431,7 @@ static inline int mpLineGetPrevFrom(MapLine* line, const u32* flags_base)
     int result = line->prev_id1;
 
     if (result != -1) {
-        u32 flags = flags_base[result * 2];
+        u32 flags = flags_base[result * MPLIB_FLAGS_STRIDE];
 
         if ((flags & LINE_FLAG_ENABLED) && !(flags & LINE_FLAG_HIDDEN)) {
             CollVtx* v0 = &groundCollVtx[line->v0_idx];
@@ -4451,7 +4461,7 @@ bool mpLinesConnected(int start_id, int target_id)
 
     start_line = groundCollLine[start_id].inner;
     flags_base = &groundCollLine->flags;
-    kind = flags_base[start_id * 2] & LINE_FLAG_KIND;
+    kind = flags_base[start_id * MPLIB_FLAGS_STRIDE] & LINE_FLAG_KIND;
     line_id = mpLineGetNextFrom(start_line, flags_base);
     while (line_id != -1 &&
            kind == (groundCollLine[line_id].flags & LINE_FLAG_KIND))
@@ -4744,6 +4754,26 @@ void mpLib_80055E9C(int joint_id)
         m0_3 = mtx[0][3];
         m1_3 = mtx[1][3];
         v = &groundCollVtx[joint->inner->vtx_start];
+#ifdef PORT
+        // PORT: the uniform-scale path is twenty-two fmadds on the console
+        // (mpLib_80055E9C+0x254..+0x38C: the vertex loop unrolled by eight,
+        // its remainder, and the four bounds), so every collision vertex on a
+        // scaled joint rounds once. Rounded twice, a slope sits an ULP off,
+        // and so does everything that stands on it. See docs/design/build.md,
+        // "Rounding and division".
+        for (i = 0; i < vtx_count; i++, v++) {
+            v->pos.x = __builtin_fmaf(v->base_pos.x, m0_0, m0_3);
+            v->pos.y = __builtin_fmaf(v->base_pos.y, m0_0, m1_3);
+        }
+        joint->bounding_min.x =
+            __builtin_fmaf(joint->inner->left_bound, m0_0, m0_3) - 30.0F;
+        joint->bounding_min.y =
+            __builtin_fmaf(joint->inner->bottom_bound, m0_0, m1_3) - 30.0F;
+        joint->bounding_max.x =
+            30.0F + __builtin_fmaf(joint->inner->right_bound, m0_0, m0_3);
+        joint->bounding_max.y =
+            30.0F + __builtin_fmaf(joint->inner->top_bound, m0_0, m1_3);
+#else
         for (i = 0; i < vtx_count; i++, v++) {
             v->pos.x = v->base_pos.x * m0_0 + m0_3;
             v->pos.y = v->base_pos.y * m0_0 + m1_3;
@@ -4756,6 +4786,7 @@ void mpLib_80055E9C(int joint_id)
             30.0F + (joint->inner->right_bound * m0_0 + m0_3);
         joint->bounding_max.y =
             30.0F + (joint->inner->top_bound * m0_0 + m1_3);
+#endif
         joint->flags |= CollJoint_B8;
         goto after0;
     }
@@ -5034,6 +5065,32 @@ int mpLib_80056B34(int id, int* out)
     return entry->x4C[1];
 }
 
+#ifdef PORT
+/// PORT: the caller's slot is not written here. Both call sites below ask
+/// for `sqrt_tmp - 4` and `sqrt_tmp - 5`, sixteen and twenty bytes outside
+/// the two-element array they are given, because that is where MWCC put the
+/// spill; here it is whichever locals clang placed underneath. The
+/// arithmetic is untouched: MSL's sqrtf on Gekko, an `frsqrte` estimate
+/// refined three times, which keeps the result bit-identical to the
+/// console. Only the store moves, to a local of the same type, so the round
+/// to f32 happens where it did. See docs/design/verification.md, "Stack
+/// slots below an array".
+static inline float sqrtf_store(float x, volatile float* y)
+{
+    volatile float slot;
+
+    (void) y;
+    if (x > 0.0F) {
+        double guess = __frsqrte((double) x);
+        guess = 0.5 * guess * (3.0 - guess * guess * x);
+        guess = 0.5 * guess * (3.0 - guess * guess * x);
+        guess = 0.5 * guess * (3.0 - guess * guess * x);
+        slot = (float) (x * guess);
+        return slot;
+    }
+    return x;
+}
+#else
 static inline float sqrtf_store(float x, volatile float* y)
 {
     if (x > 0.0F) {
@@ -5046,6 +5103,7 @@ static inline float sqrtf_store(float x, volatile float* y)
     }
     return x;
 }
+#endif
 
 int mpJointFromLine(int line_id)
 {

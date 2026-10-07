@@ -59,14 +59,27 @@ static size_t const _tyDisplay_804D6F10_len = 300;
 /* 31B328 */ static void _tyDisplay_8031B328(void);
 /* 31B850 */ static void _tyDisplay_8031B850(void);
 /* 31BA78 */ static void _tyDisplay_8031BA78(s32, s32, f32);
+#if defined(PORT) || defined(LINT)
+/* 31BBF4 */ static char* _tyDisplay_8031BBF4(s8); // PORT: not s32
+#else
 /* 31BBF4 */ static s32 _tyDisplay_8031BBF4(s8);
+#endif
 /* 31BC54 */ static HSD_GObj* _tyDisplay_8031BC54(s32);
 /* 31BF34 */ static void _tyDisplay_8031BF34(s32 arg0);
 /* 31C1D0 */ static void _tyDisplay_8031C1D0(void);
 /* 4A2D98 */ static char _tyDisplay_devtext_buf[9 * (3 * 2)];
 /* 4A2DD0 */ static TyDspArchiveHolder _tyDisplay_804A2DD0;
 /* 4A2DE8 */ static HSD_Archive*
+#ifdef PORT
+    // PORT: the #else divides a console byte count by the native pointer
+    // size. The static is 0xB0 bytes, 44 pointers on PowerPC and 22 here,
+    // and tyDisplay_8031C8B8() clears 0x2B of them, so here it would write
+    // 344 bytes into a 176-byte array. The count is the fact; the byte size
+    // is only a way of writing it down.
+    _tyDisplay_804A2DE8[0xB0 / 4];
+#else
     _tyDisplay_804A2DE8[0xB0 / sizeof(HSD_Archive*)];
+#endif
 /* 4D6F10 */ static HSD_JObj** _tyDisplay_804D6F10;
 /* 4D6F14 */ static TyDspGrid* _tyDisplay_804D6F14;
 /* 4D6F18 */ static TyDspConfig* _tyDisplay_804D6F18;
@@ -1880,8 +1893,13 @@ void tyDisplay_Scene_OnEnter(void* arg0)
     }
 
     for (i = 0; i < 0x2B; i++) {
+#if defined(PORT) || defined(LINT)
+        char* ret = _tyDisplay_8031BBF4((s8) i);
+        data->archives[i] = lbArchive_LoadSymbols(ret, 0L);
+#else
         s32 ret = _tyDisplay_8031BBF4((s8) i);
         data->archives[i] = lbArchive_LoadSymbols((char*) ret, 0L);
+#endif
     }
 
     data->x104 = 0;
@@ -2166,7 +2184,36 @@ void _tyDisplay_8031BA78(s32 arg0, s32 arg1, f32 farg0)
     },
 };
 
+#ifdef PORT
+// PORT: `TyDspNameTables` is a view over the three tables above, which the
+// console's linker laid end to end: `jobj_names` at +0, `matanim_names` at
+// +0xAC and `arch_names` at +0x158 are _tyDisplay_803B8988,
+// _tyDisplay_803B8A34 and _tyDisplay_803B8AE0. tyDisplay_8031C454() and
+// tyDisplay_8031C5E4() cast `&_tyDisplay_803B8988` to it and index across
+// all three. Here they are three objects anywhere, and a `const char*` is
+// eight bytes, so +0xAC lands at the end of the first array and a joint name
+// reaches lbFileGetFullName() as a file name. Each table is already a
+// symbol, so the tables are named and the pointer argument is discarded.
+#define TYDSP_JOBJ_NAMES(p) ((void) (p), _tyDisplay_803B8988.entries)
+#define TYDSP_MATANIM_NAMES(p) ((void) (p), _tyDisplay_803B8A34.entries)
+#define TYDSP_ARCH_NAMES(p) ((void) (p), _tyDisplay_803B8AE0)
+#else
+#if defined(PORT) || defined(LINT)
+#define TYDSP_JOBJ_NAMES(p) ((p)->jobj_names)
+#define TYDSP_MATANIM_NAMES(p) ((p)->matanim_names)
+#define TYDSP_ARCH_NAMES(p) ((p)->arch_names)
+#endif
+#endif
+#if defined(PORT) || defined(LINT)
+// PORT: `s32` in the #else, and it returns `table.entries[idx]`, a
+// `const char*`. The image is linked at 0x80000000, so a pointer truncated
+// to a signed 32-bit int and cast back sign-extends, and lbFileGetFullName()
+// reads 0xFFFFFFFF8xxxxxxx. The sibling below, tyDisplay_8031BB94(), is
+// already `char*`.
+char* tyDisplay_8031BB34(s8 idx)
+#else
 s32 tyDisplay_8031BB34(s8 idx)
+#endif
 {
     TyDspArchNames table = _tyDisplay_803B8988;
 
@@ -2174,7 +2221,11 @@ s32 tyDisplay_8031BB34(s8 idx)
         idx = 0;
     }
 
+#if defined(PORT) || defined(LINT)
+    return (char*) table.entries[idx];
+#else
     return (s32) table.entries[idx];
+#endif
 }
 
 char* tyDisplay_8031BB94(s8 idx)
@@ -2188,13 +2239,21 @@ char* tyDisplay_8031BB94(s8 idx)
     return (char*) table.entries[idx];
 }
 
+#if defined(PORT) || defined(LINT)
+char* _tyDisplay_8031BBF4(s8 arg0)
+#else
 s32 _tyDisplay_8031BBF4(s8 arg0)
+#endif
 {
     TyDspArchNames table = _tyDisplay_803B8AE0;
     if (arg0 == -1) {
         arg0 = 0;
     }
+#if defined(PORT) || defined(LINT)
+    return (char*) table.entries[arg0];
+#else
     return (s32) table.entries[arg0];
+#endif
 }
 
 HSD_GObj* _tyDisplay_8031BC54(s32 arg0)
@@ -2423,7 +2482,11 @@ s32 tyDisplay_8031C454(s32 arg0)
     temp = tables;
     if (archArr[idx] == NULL) {
         idx = entry->x04;
+#if defined(PORT) || defined(LINT)
+        names1 = TYDSP_ARCH_NAMES(temp);
+#else
         names1 = temp->arch_names;
+#endif
         if ((s8) idx == -1) {
             idx = 0;
         }
@@ -2434,13 +2497,21 @@ s32 tyDisplay_8031C454(s32 arg0)
     }
 
     if (archArr[42] == NULL) {
+#if defined(PORT) || defined(LINT)
+        names2 = TYDSP_ARCH_NAMES(tables);
+#else
         names2 = tables->arch_names;
+#endif
         archArr[42] = lbArchive_LoadSymbols(names2.entries[42], NULL);
     }
     temp2 = archArr[41];
     if (temp2 == NULL) {
         do {
+#if defined(PORT) || defined(LINT)
+            names3 = TYDSP_ARCH_NAMES(temp);
+#else
             names3 = temp->arch_names;
+#endif
             archArr[41] = lbArchive_LoadSymbols(names3.entries[41], 0L);
         } while (entry->x04 * 0);
     }
@@ -2483,7 +2554,11 @@ HSD_JObj* tyDisplay_8031C5E4(s32 arg0)
     {
         u8 c = entry->x04;
         cat = c;
+#if defined(PORT) || defined(LINT)
+        jobj_names1 = *(TyDspArchNames*) TYDSP_JOBJ_NAMES(tables);
+#else
         jobj_names1 = *(TyDspArchNames*) tables->jobj_names;
+#endif
         if ((s8) c == -1) {
             cat = 0;
         }
@@ -2495,7 +2570,11 @@ HSD_JObj* tyDisplay_8031C5E4(s32 arg0)
     {
         u8 c = entry->x04;
         cat = c;
+#if defined(PORT) || defined(LINT)
+        matanim_names1 = *(TyDspArchNames*) TYDSP_MATANIM_NAMES(tables);
+#else
         matanim_names1 = *(TyDspArchNames*) tables->matanim_names;
+#endif
         if ((s8) c == -1) {
             cat = 0;
         }
@@ -2506,11 +2585,19 @@ HSD_JObj* tyDisplay_8031C5E4(s32 arg0)
     HSD_JObjSetTranslateX(child, entry->x08);
     HSD_JObjSetTranslateZ(child, entry->x0C);
 
+#if defined(PORT) || defined(LINT)
+    jobj_names2 = *(TyDspArchNames*) TYDSP_JOBJ_NAMES(tables);
+#else
     jobj_names2 = *(TyDspArchNames*) tables->jobj_names;
+#endif
     HSD_JObjAddChild(root, HSD_JObjLoadJoint(un_8031C5E4_inline(
                                archives, 42, jobj_names2.entries[42])));
 
+#if defined(PORT) || defined(LINT)
+    jobj_names3 = *(TyDspArchNames*) TYDSP_JOBJ_NAMES(tables);
+#else
     jobj_names3 = *(TyDspArchNames*) tables->jobj_names;
+#endif
     HSD_JObjAddChild(root, HSD_JObjLoadJoint(un_8031C5E4_inline(
                                archives, 41, jobj_names3.entries[41])));
 

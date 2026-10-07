@@ -21,6 +21,13 @@ void __sinit_trigf_c(void)
 
 SECTION_CTORS void* const __sinit_trigf_c_reference = __sinit_trigf_c;
 
+#ifdef PORT
+// PORT: MWCC fused every `a * b + c` in sinf and cosf, thirteen in each.
+// The arms below spell each one as __builtin_fmaf, a fused operation the
+// build rounds as docs/design/build.md, "Rounding and division" describes.
+// Rounded twice, a knockback recomputed with cosf and sinf every frame of
+// hitstun drifts across the exact 0.5 the game compares it with.
+#endif
 f32 sinf(f32 x)
 {
     int n;
@@ -31,8 +38,16 @@ f32 sinf(f32 x)
     z = (2.0f / (f32) M_PI) * x;
     n = (__HI(x) & 0x80000000) ? (int) (z - 0.5f) : (int) (z + 0.5f);
 
+#ifdef PORT
+    y = x - n * 2;
+    y = __builtin_fmaf(__four_over_pi_m1[0], x, y);
+    y = __builtin_fmaf(__four_over_pi_m1[1], x, y);
+    y = __builtin_fmaf(__four_over_pi_m1[2], x, y);
+    y = __builtin_fmaf(__four_over_pi_m1[3], x, y);
+#else
     y = x - n * 2 + __four_over_pi_m1[0] * x + __four_over_pi_m1[1] * x +
         __four_over_pi_m1[2] * x + __four_over_pi_m1[3] * x;
+#endif
     n &= 3;
 
     if (fabsf__Ff(y) < __epsilon) {
@@ -44,16 +59,30 @@ f32 sinf(f32 x)
     ysq = y * y;
     if (n & 1) {
         n <<= 1;
+#ifdef PORT
+        z = __builtin_fmaf(__sincos_poly[0], ysq, __sincos_poly[2]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[4]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[6]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[8]);
+#else
         z = (((__sincos_poly[0] * ysq + __sincos_poly[2]) * ysq +
               __sincos_poly[4]) *
                  ysq +
              __sincos_poly[6]) *
                 ysq +
             __sincos_poly[8];
+#endif
 
         return z * __sincos_on_quadrant[n];
     } else {
         n <<= 1;
+#ifdef PORT
+        z = __builtin_fmaf(__sincos_poly[1], ysq, __sincos_poly[3]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[5]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[7]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[9]);
+        z = z * y;
+#else
         z = ((((__sincos_poly[1] * ysq + __sincos_poly[3]) * ysq +
                __sincos_poly[5]) *
                   ysq +
@@ -61,6 +90,7 @@ f32 sinf(f32 x)
                  ysq +
              __sincos_poly[9]) *
             y;
+#endif
         return z * __sincos_on_quadrant[n + 1];
     }
 }
@@ -75,8 +105,16 @@ f32 cosf(f32 x)
     z = (2.0f / (f32) M_PI) * x;
     n = (__HI(x) & 0x80000000) ? (int) (z - 0.5f) : (int) (z + 0.5f);
 
+#ifdef PORT
+    y = x - n * 2;
+    y = __builtin_fmaf(__four_over_pi_m1[0], x, y);
+    y = __builtin_fmaf(__four_over_pi_m1[1], x, y);
+    y = __builtin_fmaf(__four_over_pi_m1[2], x, y);
+    y = __builtin_fmaf(__four_over_pi_m1[3], x, y);
+#else
     y = x - n * 2 + __four_over_pi_m1[0] * x + __four_over_pi_m1[1] * x +
         __four_over_pi_m1[2] * x + __four_over_pi_m1[3] * x;
+#endif
     n &= 3;
     if (fabsf__Ff(y) < __epsilon) {
         n <<= 1;
@@ -86,6 +124,13 @@ f32 cosf(f32 x)
     ysq = y * y;
     if (n & 1) {
         n <<= 1;
+#ifdef PORT
+        z = __builtin_fmaf(__sincos_poly[1], ysq, __sincos_poly[3]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[5]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[7]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[9]);
+        z = -z * y;
+#else
         z = -((((__sincos_poly[1] * ysq + __sincos_poly[3]) * ysq +
                 __sincos_poly[5]) *
                    ysq +
@@ -93,15 +138,23 @@ f32 cosf(f32 x)
                   ysq +
               __sincos_poly[9]) *
             y;
+#endif
         return z * __sincos_on_quadrant[n];
     } else {
         n <<= 1;
+#ifdef PORT
+        z = __builtin_fmaf(__sincos_poly[0], ysq, __sincos_poly[2]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[4]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[6]);
+        z = __builtin_fmaf(z, ysq, __sincos_poly[8]);
+#else
         z = (((__sincos_poly[0] * ysq + __sincos_poly[2]) * ysq +
               __sincos_poly[4]) *
                  ysq +
              __sincos_poly[6]) *
                 ysq +
             __sincos_poly[8];
+#endif
         return z * __sincos_on_quadrant[n + 1];
     }
 }

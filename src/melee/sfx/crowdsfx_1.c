@@ -125,5 +125,12 @@ int un_80322598(int arg0, float arg1)
     } else {
         cat = 1;
     }
+#ifdef PORT
+    // PORT: the decomp has no `return`. The console's `bl` leaves the
+    // callee's r3 for the caller, and falling off the end is `unreachable` to
+    // clang. The caller in ftCo_FallSpecial.c discards it either way.
+    return un_8032201C(arg0, cat);
+#else
     un_8032201C(arg0, cat);
+#endif
 }

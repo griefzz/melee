@@ -57,8 +57,17 @@ void un_8031D9E4(int arg0, int arg1, int arg2)
     un_804D6F84[3] = arg2;
 }
 
+#ifdef PORT
+// PORT: spawn_count is the address of desc->spawn_count, which the console
+// carries in an int. MEM1 is at 0x81000000 here, so through an int it
+// sign-extends, and `counts = (u8*) spawn_count` reads 0xFFFFFFFF8xxxxxxx.
+// See docs/design/build.md, "The memory map".
+void un_8031D9F8(CharacterKind char_kind, int costume, int spawn_mode,
+                 uintptr_t spawn_count)
+#else
 void un_8031D9F8(CharacterKind char_kind, int costume, int spawn_mode,
                  int spawn_count)
+#endif
 {
     s32 pad0;
     s32 pad1;
@@ -220,8 +229,13 @@ void vi0501_Scene_OnEnter(void* arg)
         HSD_GObj_SetupProc(model_gobj, mn_8022EAE0, 0x17);
     }
 
+#ifdef PORT
+    un_8031D9F8(desc->p1_char_index, desc->p1_costume_index,
+                desc->p2_costume_index, (uintptr_t) (&desc->spawn_count));
+#else
     un_8031D9F8(desc->p1_char_index, desc->p1_costume_index,
                 desc->p2_costume_index, (int) (&desc->spawn_count));
+#endif
     lbAudioAx_800237A8(0x20B, 0x7F, 0x40);
     lbAudioAx_800237A8(0x20C, 0x7F, 0x40);
 }

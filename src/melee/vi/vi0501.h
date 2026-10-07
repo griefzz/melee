@@ -5,8 +5,15 @@
 #include <sysdolphin/baselib/forward.h>
 
 /* 31D9E4 */ void un_8031D9E4(int arg0, int arg1, int arg2);
+#ifdef PORT
+// PORT: spawn_count is the address of the cutscene desc's counts, carried in
+// an int on the console; a MEM1 address sign-extends through one here.
+/* 31D9F8 */ void un_8031D9F8(CharacterKind char_kind, int costume,
+                              int spawn_mode, uintptr_t spawn_count);
+#else
 /* 31D9F8 */ void un_8031D9F8(CharacterKind char_kind, int costume,
                               int spawn_mode, int spawn_count);
+#endif
 /* 31DC80 */ void vi_8031DC80(HSD_GObj*, intptr_t);
 /* 31DD14 */ void fn_8031DD14(HSD_GObj* gobj);
 /* 31DE58 */ void vi0501_Scene_OnEnter(void* arg);

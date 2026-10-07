@@ -108,6 +108,12 @@ typedef bool (*Predicate)(void);
 #endif
 #ifdef M2CTX
 #define STATIC_ASSERT(cond)
+#elif defined(PORT)
+// PORT: on a 64-bit host every struct holding a pointer is intentionally wider
+// than the PowerPC layout these assertions describe, so they cannot hold and
+// would block the build. The port checks the console layouts by compiling the
+// headers for PowerPC instead (tools/gen/gen_schema.py).
+#define STATIC_ASSERT(cond)
 #elif defined(__MWERKS__)
 #define STATIC_ASSERT(cond)                                                   \
     struct {                                                                  \

@@ -6,6 +6,9 @@
 #include <sysdolphin/baselib/gobj.h>
 #include <sysdolphin/baselib/gobjgxlink.h>
 #include <sysdolphin/baselib/tobj.h>
+#ifdef PORT
+#include <port/gfx.h>
+#endif
 
 typedef struct {
     CmSnapStatus status;
@@ -55,4 +58,10 @@ void cmSnap_800316B4(void)
     _p(unk1).image_ptr = NULL;
     GObj_SetupGXLinkMax(GObj_Create(0x12, 0x12, 0), cmSnap_80031640, 4);
     lb_800121FC(&_p(unk1), 0x280, 0x1E0, 4, 0x7D6);
+#ifdef PORT
+    // PORT: the photo is read as bytes, JPEG-encoded and saved to the card
+    // (lbsnap.c), so its copy has to reach memory; the port keeps other
+    // copies on the GPU.
+    port_gfx_copy_wants_bytes(_p(unk1).image_ptr);
+#endif
 }

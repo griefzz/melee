@@ -63,7 +63,13 @@
 /* 3181BC */ static s32 _tyFigupon_803181BC(void);
 /* 4D6EF0 */ static TyFiguponData* _tyFigupon_804D6EF0;
 /* 4D6EF4 */ static struct un_804D6EF4_t* _tyFigupon_804D6EF4;
+#if defined(PORT) || defined(LINT)
+// PORT: a ToyListEntry, not an HSD_Archive*; toy.c reads its archive at
+// +0x14.
+/* 4D6EF8 */ static struct ToyListEntry* _tyFigupon_804D6EF8;
+#else
 /* 4D6EF8 */ static HSD_Archive* _tyFigupon_804D6EF8;
+#endif
 /* 4D6EFC */ static s32 _tyFigupon_804D6EFC;
 /* 4D6F00 */ static s32 _tyFigupon_804D6F00;
 /* 4D6F04 */ static HSD_CObjDesc* _tyFigupon_804D6F04;
@@ -232,7 +238,11 @@ void _tyFigupon_80314C5C(HSD_GObj* gobj)
             HSD_GObjFree(gobj);
         }
     } else {
+#if defined(PORT) || defined(LINT)
+        Toy* tp = HSD_MemAlloc(sizeof(Toy));
+#else
         Toy* tp = HSD_MemAlloc(0x58);
+#endif
         if (tp != NULL) {
             GObj_InitUserData(gobj, 0, Toy_RemoveUserData, tp);
         }
@@ -567,9 +577,15 @@ void _tyFigupon_803155C8(void)
     case 8:
         ef4->x58 -= 1;
         if (ef4->x58 == 0) {
+#if defined(PORT) || defined(LINT)
+            if (_tyFigupon_804D6EF8->archive != NULL) {
+                lbArchive_80016EFC(_tyFigupon_804D6EF8->archive);
+                _tyFigupon_804D6EF8->archive = NULL;
+#else
             if (((HSD_Archive**) _tyFigupon_804D6EF8)[5] != NULL) {
                 lbArchive_80016EFC(((HSD_Archive**) _tyFigupon_804D6EF8)[5]);
                 ((HSD_Archive**) _tyFigupon_804D6EF8)[5] = NULL;
+#endif
             }
             if (aa8->gobj != NULL) {
                 HSD_GObjFree(aa8->gobj);
@@ -1446,6 +1462,26 @@ void tyFigupon_Scene_OnEnter(void* arg0)
     u8 kind;
     PAD_STACK(16);
 
+#ifdef PORT
+    // PORT: three byte counts sized for the console's structures. 0x34 is
+    // eight bytes more than TyFiguponData (0x2C there); the tail is fields
+    // nobody has named, carried as bytes on top of the real struct. 0x18 is
+    // sizeof(ToyListEntry): Toy_80308250() fills this block with a trophy's
+    // archive name, symbol name and id, and toy.c reads its archive as
+    // `((HSD_Archive**) it)[5]`, the entry's +0x14. 0xE4 is
+    // sizeof(ToyCameraControl) on the console, and toy.c clears this block
+    // by sizeof, which is larger here, so the clear would run into the next
+    // heap block. Each is sized by its type.
+    _tyFigupon_804D6EF0 =
+        HSD_MemAlloc(sizeof(TyFiguponData) + (0x34 - 0x2C));
+    _tyFigupon_804D6EF4 = HSD_MemAlloc(sizeof(*_tyFigupon_804D6EF4));
+    _tyFigupon_804D6EF8 = HSD_MemAlloc(sizeof(struct ToyListEntry));
+    Toy_sbss_804D6ED4 = HSD_MemAlloc(sizeof(*Toy_sbss_804D6ED4));
+    memzero(_tyFigupon_804D6EF0, sizeof(TyFiguponData) + (0x34 - 0x2C));
+    memzero(_tyFigupon_804D6EF4, sizeof(*_tyFigupon_804D6EF4));
+    memzero(_tyFigupon_804D6EF8, sizeof(struct ToyListEntry));
+    memzero(Toy_sbss_804D6ED4, sizeof(*Toy_sbss_804D6ED4));
+#else
     _tyFigupon_804D6EF0 = HSD_MemAlloc(0x34);
     _tyFigupon_804D6EF4 = HSD_MemAlloc(sizeof(*_tyFigupon_804D6EF4));
     _tyFigupon_804D6EF8 = HSD_MemAlloc(0x18);
@@ -1454,6 +1490,7 @@ void tyFigupon_Scene_OnEnter(void* arg0)
     memzero(_tyFigupon_804D6EF4, sizeof(*_tyFigupon_804D6EF4));
     memzero(_tyFigupon_804D6EF8, 0x18);
     memzero(Toy_sbss_804D6ED4, 0xE4);
+#endif
     data = _tyFigupon_804D6EF0;
     Toy_sbss_804D6EC8 = NULL;
     ef4 = _tyFigupon_804D6EF4;
@@ -1484,7 +1521,12 @@ void tyFigupon_Scene_OnEnter(void* arg0)
             }
         }
     }
+#ifdef PORT
+    // PORT: the second clear of the same block; see the allocation above.
+    memzero(Toy_sbss_804D6ED4, sizeof(*Toy_sbss_804D6ED4));
+#else
     memzero(Toy_sbss_804D6ED4, 0xE4);
+#endif
     Toy_80306D70(0);
     _tyFigupon_8031753C();
     joint = HSD_ArchiveGetPublicAs(HSD_Joint, ef4->archive,

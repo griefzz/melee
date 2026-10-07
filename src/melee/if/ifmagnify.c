@@ -1,6 +1,9 @@
 #include "ifmagnify.h"
 
 #include <math.h>
+#ifdef PORT
+#include <stddef.h> // PORT: offsetof, which the console's headers bring in
+#endif
 
 #include "if_2FD9.h"
 #include "ifall.h"
@@ -29,6 +32,27 @@
 #include <sysdolphin/baselib/mobj.h>
 #include <sysdolphin/baselib/tobj.h>
 #include <sysdolphin/baselib/wobj.h>
+
+#ifdef PORT
+#include <port/gfx.h>
+// PORT: the ring the off-screen bubble sits on, in the HUD's screen units:
+// +-252.7 wide by +-162.7 high, inset from the 4:3 frame's edges. Widescreen
+// keeps the HUD at 4:3 in the middle of a wider frame, so the ring widens by
+// the margin the frame gains each side, and the corner threshold (the y/x
+// slope beyond which the bubble is pinned to the top or bottom edge instead
+// of a side) follows from the new width; 162.7/252.7 is the console's
+// 0.6438464. Slippi's widescreen code ("Fix Bubble Positions") changes the
+// same three numbers differently, because its HUD is stretched rather than
+// anchored. See docs/design/renderer.md, "Widescreen".
+#define MAG_EDGE_X (252.70001f + port_gfx_view_margin())
+// PORT: the console's literal at 4:3, so that a run without widescreen
+// takes the same branch on the same input to the last bit.
+#define MAG_EDGE_RATIO                                                        \
+    (port_gfx_view_margin() == 0.0f ? 0.6438464f : 162.7f / MAG_EDGE_X)
+#else
+#define MAG_EDGE_X 252.70001f
+#define MAG_EDGE_RATIO 0.6438464f
+#endif
 
 static HSD_WObjDesc ifMagnify_803F97C0 = { NULL,
                                            { 0.0F, 0.0F, 300.0F },
@@ -118,7 +142,7 @@ ifMagnifyPlayer* ifMagnify_802FB73C(ifMagnifyPlayer* player, Vec2* pos,
         out->x = 0.0f;
     } else {
         ratio = y / x;
-        if ((ratio > 0.6438464f) || (ratio < -0.6438464f)) {
+        if ((ratio > MAG_EDGE_RATIO) || (ratio < -MAG_EDGE_RATIO)) {
             if (y > 0.0f) {
                 out->y = 162.7f;
             } else {
@@ -127,18 +151,18 @@ ifMagnifyPlayer* ifMagnify_802FB73C(ifMagnifyPlayer* player, Vec2* pos,
             x_clamped = out->y;
             x_clamped = x_clamped * x;
             x_clamped /= y;
-            if (x_clamped < -252.70001f) {
-                out->x = -252.70001f;
-            } else if (x_clamped > 252.70001f) {
-                out->x = 252.70001f;
+            if (x_clamped < -MAG_EDGE_X) {
+                out->x = -MAG_EDGE_X;
+            } else if (x_clamped > MAG_EDGE_X) {
+                out->x = MAG_EDGE_X;
             } else {
                 out->x = x_clamped;
             }
         } else {
             if (x > 0.0f) {
-                out->x = 252.70001f;
+                out->x = MAG_EDGE_X;
             } else {
-                out->x = -252.70001f;
+                out->x = -MAG_EDGE_X;
             }
             y_clamped = out->x;
             y_clamped = y_clamped * y;
@@ -154,12 +178,12 @@ ifMagnifyPlayer* ifMagnify_802FB73C(ifMagnifyPlayer* player, Vec2* pos,
     }
 
     out_x = out->x;
-    x = -252.70001f;
+    x = -MAG_EDGE_X;
     if (out_x == x) {
         player->state.edge = 2;
         return player;
     }
-    x = 252.70001f;
+    x = MAG_EDGE_X;
     if (out_x == x) {
         player->state.edge = 4;
         return player;

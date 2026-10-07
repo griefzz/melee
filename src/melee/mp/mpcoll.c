@@ -642,8 +642,16 @@ void mpColl_LoadECB(CollData* coll)
 
 static inline void Vec2_Interpolate(float time, Vec2* dest, Vec2* src)
 {
+#ifdef PORT
+    // PORT: eight fmadds on the console (mpCollInterpolateECB+0xB8..+0x144):
+    // the difference is rounded alone and time times it fused onto dest. See
+    // docs/design/build.md, "Rounding and division".
+    dest->x = __builtin_fmaf(time, src->x - dest->x, dest->x);
+    dest->y = __builtin_fmaf(time, src->y - dest->y, dest->y);
+#else
     dest->x += time * (src->x - dest->x);
     dest->y += time * (src->y - dest->y);
+#endif
 }
 
 void mpCollInterpolateECB(CollData* coll, float time)
