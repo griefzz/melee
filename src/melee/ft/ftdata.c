@@ -168,19 +168,40 @@ void ft_8008521C(HSD_GObj* gobj)
 
 static inline void ft_800852B0_Reset_ft_8045993C(ftData** list, int i)
 {
+#ifdef PORT
+    // PORT: `&list[Ft_Kind_Max]` is gFtDataList (0x804598B8) + 0x84, which is
+    // ft_8045993C only because the console's linker placed it next in .bss.
+    // Name it; see docs/design/verification.md, "Statics laid end to end".
+    (void) list;
+    ft_8045993C[i].pad_x0 = 0;
+    ft_8045993C[i].x6_b0 = 0;
+    ft_8045993C[i].x6_b1_b2 = 0;
+#else
     /// @todo Bitfields seem off
     ((ft_8045993C_t*) &list[Ft_Kind_Max])[i].pad_x0 = 0;
     ((ft_8045993C_t*) &list[Ft_Kind_Max])[i].x6_b0 = 0;
     ((ft_8045993C_t*) &list[Ft_Kind_Max])[i].x6_b1_b2 = 0;
+#endif
 }
 
 void ft_800852B0(void)
 {
     ftData** list;
+#ifdef PORT
+    // PORT: both casts below are distances the console's linker produced.
+    // CostumeListsForeachCharacter is at 0x803C0EC0, so +0x108 (the end of
+    // its 33 eight-byte elements) is ftData_Table_Unk0 at 0x803C0FC8, and
+    // +5940 (0x1734) is ftData_UnkIntPairs at 0x803C25F4. Here they are
+    // separate objects, and each loop below would write its 33 NULLs over
+    // whatever lies at the console's offsets.
+    ftData_UnkCountStruct* unk0 = ftData_Table_Unk0;
+    ftData_UnkCountStruct* pairs = ftData_UnkIntPairs;
+#else
     ftData_UnkCountStruct* unk0 =
         (ftData_UnkCountStruct*) &CostumeListsForeachCharacter[Ft_Kind_Max];
     ftData_UnkCountStruct* pairs =
         (ftData_UnkCountStruct*) ((u8*) CostumeListsForeachCharacter + 5940);
+#endif
     int i;
     int new_var = 0;
 
@@ -1801,6 +1822,17 @@ FigaTree* ftData_80085E50(Fighter* arg0, int msid)
             if (temp_r3_2 != 0) {
                 temp_r3_3 = ftData_80086060(arg0);
                 if ((temp_r3_3 != NULL) && (temp_r3->x14 == temp_r3_3->x5A4)) {
+#ifdef PORT
+                    // PORT: x59C (Nana's main buffer) already holds this
+                    // file. The console's copy rewrites it byte for byte, but
+                    // the port would convert it again, which frees the data
+                    // her main animation is reading.
+                    if (temp_r3->x14 == arg0->x5A4 && arg0->x590 != NULL) {
+                        arg0->x598 = arg0->x590;
+                        arg0->x5A8 = temp_r3->x14;
+                        return arg0->x598;
+                    }
+#endif
                     memcpy(arg0->x59C, temp_r3_3->x59C, temp_r3->x8);
                     temp_r4 = arg0->x59C;
                     temp_ret = lbArchiveRelocate(

@@ -97,7 +97,13 @@ union ftPikachu_MotionVars {
 
     struct ftPikachu_SpecialLwVars {
         Item_GObj* x0;
+#if defined(PORT) || defined(LINT)
+        /// PORT: 0..3, not a bool; ftpikachuspeciallw.c sets 3 and compares
+        /// against it.
+        s32 x4;
+#else
         bool x4;
+#endif
     } speciallw;
 };
 

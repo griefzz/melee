@@ -1,4 +1,7 @@
 #include "ftpikachuspeciallw.h"
+#ifdef PORT
+#include <port/port.h> // port_log()
+#endif
 
 #include <Runtime/platform.h>
 
@@ -56,7 +59,37 @@ void ftPk_SpecialLw_80127608(HSD_GObj* gobj)
 void ftPk_SpecialLw_SetState_Unk0(HSD_GObj* gobj)
 {
     Fighter* fp = GET_FIGHTER(gobj);
+#ifdef PORT
+    // PORT: the thunder calls this when it lands
+    // (it_2725_Logic39_Destroyed(), it/kinds/itpikachuthunder.c), gated on a
+    // hit-status flag and not on the state, so it can land after Pikachu has
+    // left SpecialLw, when `x4` is a write into whichever arm of `mv` is
+    // live. On the console that is +4, a scalar in nearly every arm; here
+    // the struct's pointer widens and the write lands at native +8, the low
+    // half of a pointer in any arm led by one. Only the SpecialLw states read
+    // x4, so the write is declined outside them, and counted, since the
+    // console does write something.
+    if (fp->motion_id < ftPk_MS_SpecialLwStart ||
+        fp->motion_id > ftPk_MS_SpecialAirLwEnd)
+    {
+        static int declined;
+
+        declined++;
+        if (declined == 1 || (declined % 100) == 0) {
+            port_log(PORT_LOG_INFO,
+                     "pikachu: thunder landed with Pikachu in motion state "
+                     "0x%X, outside SpecialLw; the x4 write is declined "
+                     "(%d so far)",
+                     (unsigned) fp->motion_id, declined);
+        }
+        return;
+    }
+#endif
+#if defined(PORT) || defined(LINT)
+    fp->mv.pk.speciallw.x4 = 3;
+#else
     fp->mv.pk.specialhi.x4 = 3;
+#endif
 }
 
 bool ftPk_SpecialLw_8012765C(HSD_GObj* gobj)
@@ -93,7 +126,11 @@ bool ftPk_SpecialLw_8012765C(HSD_GObj* gobj)
 void ftPk_SpecialLw_SetState_Unk1(HSD_GObj* gobj)
 {
     Fighter* fp = GET_FIGHTER(gobj);
+#if defined(PORT) || defined(LINT)
+    fp->mv.pk.speciallw.x4 = 0;
+#else
     fp->mv.pk.specialhi.x4 = 0;
+#endif
 }
 
 void ftPk_SpecialLw_SpawnEffect(HSD_GObj* gobj)
@@ -134,8 +171,13 @@ void ftPk_SpecialLw_Enter(HSD_GObj* gobj)
     Fighter* fp = GET_FIGHTER(gobj);
     fp->cmd_vars[0] = 0;
     fp->x2210.throw_flags = 0;
+#if defined(PORT) || defined(LINT)
+    fp->mv.pk.speciallw.x4 = 1;
+    fp->mv.pk.speciallw.x0 = 0;
+#else
     fp->mv.pk.specialhi.x4 = 1;
     fp->mv.pk.specialhi.x0 = 0;
+#endif
     Fighter_ChangeMotionState(gobj, 359, Ft_MF_None, 0.0f, 1.0f, 0.0f, 0);
     ftAnim_8006EBA4(gobj);
 }
@@ -145,8 +187,13 @@ void ftPk_SpecialAirLw_Enter(HSD_GObj* gobj)
     Fighter* fp = GET_FIGHTER(gobj);
     fp->cmd_vars[0] = 0;
     fp->x2210.throw_flags = 0;
+#if defined(PORT) || defined(LINT)
+    fp->mv.pk.speciallw.x4 = 1;
+    fp->mv.pk.speciallw.x0 = 0;
+#else
     fp->mv.pk.specialhi.x4 = 1;
     fp->mv.pk.specialhi.x0 = 0;
+#endif
     Fighter_ChangeMotionState(gobj, 363, Ft_MF_None, 0.0f, 1.0f, 0.0f, 0);
     ftAnim_8006EBA4(gobj);
 }
@@ -250,7 +297,11 @@ void ftPk_SpecialLwLoop0_Anim(HSD_GObj* gobj)
     u8 _[8];
 
     Fighter* fp = GET_FIGHTER(gobj);
+#if defined(PORT) || defined(LINT)
+    if ((fp->mv.pk.speciallw.x4 == 3) || fp->cmd_vars[0]) {
+#else
     if ((fp->mv.pk.specialhi.x4 == 3) || fp->cmd_vars[0]) {
+#endif
         fp->take_dmg_cb = 0;
         Fighter_ChangeMotionState(gobj, 362, Ft_MF_None, 0.0f, 1.0f, 0.0f, 0);
         return;
@@ -271,7 +322,11 @@ void ftPk_SpecialAirLwLoop0_Anim(HSD_GObj* gobj)
     u8 _[24];
 
     Fighter* fp = GET_FIGHTER(gobj);
+#if defined(PORT) || defined(LINT)
+    if ((fp->mv.pk.speciallw.x4 == 3) || fp->cmd_vars[0]) {
+#else
     if ((fp->mv.pk.specialhi.x4 == 3) || fp->cmd_vars[0]) {
+#endif
         fp->take_dmg_cb = 0;
         Fighter_ChangeMotionState(gobj, 366, Ft_MF_None, 0.0f, 1.0f, 0.0f, 0);
         return;

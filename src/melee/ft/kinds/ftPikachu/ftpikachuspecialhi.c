@@ -30,6 +30,21 @@
 #include <sysdolphin/baselib/jobj.h>
 #include <sysdolphin/baselib/random.h>
 
+#ifdef PORT
+// PORT: MWCC fused ten multiply-adds in Quick Attack: the zip's speed
+// `x90 * stick + x94` on the ground (ftPk_SpecialHi_80126C0C+0x130) and in
+// the air (ftPk_SpecialHi_80126E1C+0x154 and +0x174), the model's angle
+// `facing * angle + k` (three sites), and the start effect's jitter
+// `K * rand - C` (four fmsubs). These macros fuse them in the port and are
+// the plain expressions on the console; a zip's whole flight follows the
+// speed. See docs/design/build.md, "Rounding and division".
+#define PK_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#define PK_MSUB(a, b, c) __builtin_fmaf((a), (b), -(c))
+#else
+#define PK_MADD(a, b, c) ((a) * (b) + (c))
+#define PK_MSUB(a, b, c) ((a) * (b) - (c))
+#endif
+
 /// @todo Move elsewhere.
 #define MAX_STICK_MAG 0.999f
 
@@ -197,9 +212,9 @@ void ftPk_SpecialHiStart1_Anim(HSD_GObj* gobj)
                 fp->parts[ftParts_GetBoneIndex(fp, FtPart_XRotN)].joint, 0,
                 &vec2);
             tempf = HSD_Randf();
-            vec2.x += 6 * tempf - 3;
+            vec2.x += PK_MSUB(6, tempf, 3);
             tempf = HSD_Randf();
-            vec2.y += 6 * tempf - 3;
+            vec2.y += PK_MSUB(6, tempf, 3);
             efSync_Spawn(1012, gobj, &vec2);
             fp->x2219_b0 = true;
             Fighter_SetEffectHitlagCallbacks(fp);
@@ -236,9 +251,9 @@ void ftPk_SpecialAirHiStart1_Anim(HSD_GObj* gobj)
                 fp->parts[ftParts_GetBoneIndex(fp, FtPart_XRotN)].joint, 0,
                 &vec2);
             tempf = HSD_Randf();
-            vec2.x += (10 * tempf) - 5;
+            vec2.x += PK_MSUB(10, tempf, 5);
             tempf = HSD_Randf();
-            vec2.y += (10 * tempf) - 5;
+            vec2.y += PK_MSUB(10, tempf, 5);
             efSync_Spawn(1012, gobj, &vec2);
             fp->x2219_b0 = true;
             Fighter_SetEffectHitlagCallbacks(fp);
@@ -261,7 +276,7 @@ void ftPk_SpecialHi_8012642C(HSD_GObj* gobj)
 
     float half_pi = (float) M_PI_2;
     float angle = atan2f(fp->self_vel.x, fp->self_vel.y);
-    float tempf = (fp->facing_dir * angle) + (pika_attr->x78 - half_pi);
+    float tempf = PK_MADD(fp->facing_dir, angle, pika_attr->x78 - half_pi);
 
     ftPartSetRotX(fp, ftParts_GetBoneIndex(fp, FtPart_XRotN), tempf);
     scl.x = pika_attr->x7C_scale.x;
@@ -326,7 +341,7 @@ void ftPk_SpecialHiStart1_Coll(HSD_GObj* gobj)
         if (collData->env_flags & Collide_FloorMask) {
             float angle =
                 atan2f(collData->floor.normal.x, collData->floor.normal.y);
-            float angle2 = (fighter2->facing_dir * angle) + pika_attr->x68;
+            float angle2 = PK_MADD(fighter2->facing_dir, angle, pika_attr->x68);
             ftPartSetRotX(fighter2,
                           ftParts_GetBoneIndex(fighter2, FtPart_XRotN),
                           angle2);
@@ -428,9 +443,10 @@ void ftPk_SpecialHi_ChangeMotion_Unk03(HSD_GObj* gobj)
     collData = &fp->coll_data;
     pika_attr = fp->dat_attrs;
     if (fp->coll_data.env_flags & Collide_FloorMask) {
-        float angle = (fp->facing_dir * atan2f(collData->floor.normal.x,
-                                               collData->floor.normal.y)) +
-                      pika_attr->x68;
+        float angle = PK_MADD(fp->facing_dir,
+                              atan2f(collData->floor.normal.x,
+                                     collData->floor.normal.y),
+                              pika_attr->x68);
         ftPartSetRotX(fp, ftParts_GetBoneIndex(fp, FtPart_XRotN), angle);
     }
 
@@ -495,7 +511,7 @@ void ftPk_SpecialHi_80126C0C(HSD_GObj* gobj)
 
             // set ground velocity to (zip_slope * stick_mag) + zip_intercept
             // and then flip based on facing direction
-            fp->gr_vel = (pika_attr->x90 * stick_mag) + pika_attr->x94;
+            fp->gr_vel = PK_MADD(pika_attr->x90, stick_mag, pika_attr->x94);
             fp->gr_vel *= fp->facing_dir;
 
             // if second zip
@@ -579,10 +595,10 @@ void ftPk_SpecialHi_80126E1C(HSD_GObj* gobj)
 
     // compute velocity as (zip slope * stick_mag) + zip intercept
     // x velocity is the same but flips based on facing direction
-    temp_f2_2 = ((pika_attr->x90 * final_stick_mag) + pika_attr->x94) *
+    temp_f2_2 = PK_MADD(pika_attr->x90, final_stick_mag, pika_attr->x94) *
                 cosf(some_angle);
     fp->self_vel.x = fp->facing_dir * temp_f2_2;
-    fp->self_vel.y = ((pika_attr->x90 * final_stick_mag) + pika_attr->x94) *
+    fp->self_vel.y = PK_MADD(pika_attr->x90, final_stick_mag, pika_attr->x94) *
                      sinf(some_angle);
 
     // if second zip

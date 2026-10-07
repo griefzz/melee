@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "ftCo_Pass.h"
 
 #include <Runtime/platform.h>
@@ -54,7 +57,24 @@ bool ftCo_8009A080(Fighter_GObj* gobj)
 {
     u8 _[8];
     Fighter* fp = gobj->user_data;
+#ifdef PORT
+    // PORT: --ucf. UCF 0.84's shield drop extension is injected at this
+    // function's +0x38, the `cror eq, lt, eq` of the inlined
+    // ftCo_80099F1C()'s `lstick.y <= -x464` test. It replaces that one term:
+    // when the test fails, `sdrop_up_frames >= 2` sets the same condition
+    // bit. The freshness test on active_timer.lstick.y (+0x40) and the
+    // mpColl_IsOnPlatform() call (+0x6C) still gate the drop, so a stick
+    // already held down when the shield comes up does not drop. Inert unless
+    // --ucf (port/mods/slippi/ucf.c).
+    if (fp->input.held_buttons[0] & HSD_PAD_LR &&
+        (fp->input.lstick[0].y <= -p_ftCommonData->x464 ||
+         port_hook_fighter_shield_drop_input(fp)) &&
+        fp->active_timer.lstick.y < p_ftCommonData->x468 &&
+        mpColl_IsOnPlatform(&fp->coll_data))
+    {
+#else
     if (fp->input.held_buttons[0] & HSD_PAD_LR && ftCo_80099F1C(gobj)) {
+#endif
         ftCo_8009A228(gobj);
         return true;
     }

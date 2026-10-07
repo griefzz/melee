@@ -240,6 +240,28 @@ void ftCo_800C0D0C(Fighter_GObj* gobj)
                               Ft_MF_SkipMatAnim | Ft_MF_SkipColAnim, 0, 1, 0,
                               NULL);
     ftCommon_8007E2FC(gobj);
+#ifdef PORT
+    {
+        // PORT: of this struggle time's three products the console fuses
+        // `x5FC * (x600 - handicap) + x5F8` and `pct * x60C + ...` and adds
+        // the slot term unfused (ftCo_800C0D0C+0xB8..+0x100): MWCC makes the
+        // two calls first and holds that product in a register. Its own
+        // statement keeps it a separate rounding when the build contracts
+        // (docs/design/build.md, "Rounding and division").
+        // ftCo_DamageBind.c and ftCo_DamageSong.c have the same formula.
+        float slot_term = p_ftCommonData->x604 *
+                          (p_ftCommonData->x608 -
+                           (Player_80033BB8(fp->player_idx) + 1));
+
+        ftCommon_InitGrab(
+            fp, 0,
+            (fp->dmg.x1830_percent * p_ftCommonData->x60C) +
+                ((p_ftCommonData->x5FC *
+                  (p_ftCommonData->x600 -
+                   Player_GetHandicap(fp->player_idx))) +
+                 p_ftCommonData->x5F8 + slot_term));
+    }
+#else
     ftCommon_InitGrab(
         fp, 0,
         (fp->dmg.x1830_percent * p_ftCommonData->x60C) +
@@ -249,6 +271,7 @@ void ftCo_800C0D0C(Fighter_GObj* gobj)
              (p_ftCommonData->x604 *
               (p_ftCommonData->x608 -
                (Player_80033BB8(fp->player_idx) + 1)))));
+#endif
     ftCommon_8007E2F4(fp, 0x1FF);
     fp->x221D_b5 = true;
     fp->x2220_b3 = true;

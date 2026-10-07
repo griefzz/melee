@@ -164,9 +164,16 @@ void ftCo_800C18A8(Fighter_GObj* gobj, ftCommon_MotionState msid, Vec3* normal,
 
     fp = GET_FIGHTER(gobj);
 
+#ifdef PORT
+    // PORT: these read through a null gobj to shape MWCC's stack frame.
+    // Address 0 is readable on a GameCube, so on the console it is a
+    // harmless load; on the host it faults whenever a fighter bounces off a
+    // wall. The port does not need the frame shape, so it leaves them out.
+#else
     /// @todo fix stack padding
     GET_FIGHTER(0);
     GET_FIGHTER(0);
+#endif
 
     vec0.x = fp->cur_pos.x + offset->x;
     vec0.y = fp->cur_pos.y + offset->y;

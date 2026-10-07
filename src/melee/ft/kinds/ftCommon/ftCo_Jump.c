@@ -26,12 +26,24 @@
 #include <melee/ft/inlines.h>
 #include <melee/ft/kinds/ftPeach/ftpeachfloat.h>
 #include <melee/ft/types.h>
+#ifdef PORT
+#include <port/hooks.h> // tap jump off; port/game/tap_jump.c
+#endif
 
 ftCo_JumpInput ftCo_Jump_GetInput(Fighter_GObj* gobj)
 {
     Fighter* fp = GET_FIGHTER(gobj);
+#ifdef PORT
+    // PORT: for a player with tap jump off, up on the stick is not a jump
+    // (port/game/tap_jump.c). Every ground jump check but the run's goes
+    // through here, and the ledge, tumble and item states too.
+    if ((fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold) &&
+        (fp->active_timer.lstick.y < p_ftCommonData->tap_jump_window) &&
+        !port_hook_fighter_tap_jump_suppressed(fp))
+#else
     if ((fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold) &&
         (fp->active_timer.lstick.y < p_ftCommonData->tap_jump_window))
+#endif
     {
         return JumpInput_LStick;
     }
@@ -67,9 +79,18 @@ bool fn_800CAF78(Fighter_GObj* gobj)
         return ftCo_800C5A50(gobj);
     }
 
+#ifdef PORT
+    // PORT: tap jump off, in the run's own check with the relaxed
+    // threshold.
+    if ((fp->input.lstick[0].y >=
+         p_ftCommonData->relaxed_tap_jump_threshold) &&
+        (fp->active_timer.lstick.y < p_ftCommonData->tap_jump_window) &&
+        !port_hook_fighter_tap_jump_suppressed(fp))
+#else
     if ((fp->input.lstick[0].y >=
          p_ftCommonData->relaxed_tap_jump_threshold) &&
         (fp->active_timer.lstick.y < p_ftCommonData->tap_jump_window))
+#endif
     {
         ftCo_KneeBend_Enter(gobj, JumpInput_LStick);
         return true;

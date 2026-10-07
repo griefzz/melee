@@ -178,8 +178,16 @@ union ftCommon_MotionVars {
         /* fp+234C */ int xC;
         /* fp+2350 */ float x10;
         /* fp+2354 */ int x14;
+#ifdef PORT
+        // PORT: four bytes, as on the console. As UNK_T they move x20 off
+        // guard.x20 (the dash-throw window), which it aliases; see
+        // docs/design/verification.md, "Union arms".
+        /* fp+2358 */ int x18;
+        /* fp+235C */ int x1C;
+#else
         /* fp+2358 */ UNK_T x18;
         /* fp+235C */ UNK_T x1C;
+#endif
         /* fp+2360 */ int x20;
     } itemthrow;
     struct ftCommon_MotionVars_itemthrow4 {
@@ -407,7 +415,15 @@ union ftCommon_MotionVars {
     struct ftCommon_MotionVars_unk_deadup {
         /* fp+2340 */ int x40;
         /* fp+2344 */ int x44;
+#if defined(PORT) || defined(LINT)
+        // PORT: the game never reads this word. Slippi's
+        // FreezeDeadUpFallPhysics stores the star-KO Y velocity in it, and
+        // x4C (which case 1 uses as a lerp weight and case 3 has finished
+        // with) holds the Z. Naming the pad is byte-identical on PowerPC.
+        /* fp+2348 */ float x48;
+#else
         /* fp+2348 */ u8 pad_x48[0x4C - 0x48];
+#endif
         /* fp+234C */ float x4C;
         /* fp+2350 */ Vec3 x50;
         /* fp+235C */ Vec3 x5C;

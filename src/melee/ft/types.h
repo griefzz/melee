@@ -1031,6 +1031,35 @@ struct MotionState {
 
     enum_t x4_flags;
 
+#ifdef PORT
+    // PORT: every motion-state table writes this word as a number,
+    // `(FtMoveId_Attack11 << 24) | (1 << 23)`, and the game reads it back as
+    // `move_id`, `x9_b0` and `x9_b1`. The top byte of the word is byte zero
+    // on the console and byte three here, and MWCC fills a bitfield run from
+    // the top, so the bytes are in little-endian order and the x9 run is
+    // reversed: move_id on bits 31..24, x9_b0..x9_b7 on 23..16, xA on 15..8,
+    // xB on 7..0. Declared as on the console, move_id reads 0 for every move
+    // and no move is ever stale. See docs/design/verification.md, "Bitfield
+    // order".
+    union MotionState_x8 {
+        u32 _;
+        struct MotionState_x8_x0 {
+            /* word 7..0 */ u8 xB;
+            /* word 15..8 */ u8 xA;
+            /* word 23..16 */ struct MotionState_x8_x0_x1 {
+                u8 x9_b7 : 1;
+                u8 x9_b6 : 1;
+                u8 x9_b5 : 1;
+                u8 x9_b4 : 1;
+                u8 x9_b3 : 1;
+                u8 x9_b2 : 1;
+                u8 x9_b1 : 1;
+                u8 x9_b0 : 1;
+            } x1;
+            /* word 31..24 */ u8 move_id : 8;
+        } x0;
+    } x8;
+#else
     union MotionState_x8 {
         /// @todo Try to match without this being a @c union.
         u32 _;
@@ -1050,6 +1079,7 @@ struct MotionState {
             u8 xB;
         } x0;
     } x8;
+#endif
 
     HSD_GObjEvent anim_cb;
     HSD_GObjEvent input_cb;
@@ -1073,6 +1103,33 @@ struct Fighter_DemoStrings {
 
 /// @todo Rename this and its members; investigate using it elsewhere.
 /* fp+2070 */ union Struct2070 {
+#ifdef PORT
+    // PORT: the word is written as a number and read back as bytes and bits.
+    // ft_800895E0() (ft/ft_0892.c) reinterprets an int argument as this
+    // union, assigns x2070_int = 0x240063 and tests x2073, which is 0x63 on
+    // the console's big-endian word. So the bytes are in little-endian order,
+    // and each flag run is reversed because MWCC fills a run from the top bit
+    // and clang from the bottom. Declared as on the console, x2073 reads 0
+    // and the Luigi and item branches there never run. See
+    // docs/design/verification.md, "Bitfield order".
+    struct Struct2070_x0 {
+        /* +3 of the word */ u8 x2073;
+        u8 count_specials : 1;
+        u8 count_x1A0 : 1;
+        u8 count_aerials : 1;
+        u8 count_thrown_items : 1;
+        u8 count_x1A4 : 1;
+        u8 x2072_b2 : 1;
+        u8 x2072_b1 : 1;
+        u8 x2072_b0 : 1;
+        u8 x2071_b7 : 1;
+        u8 x2071_b6 : 1;
+        u8 x2071_b5 : 1;
+        u8 x2071_b4 : 1;
+        u8 x2071_b0_3 : 4;
+        /* +0 of the word */ s8 x2070;
+    } x0;
+#else
     /* fp+2070 */ struct Struct2070_x0 {
         /* fp+2070 */ s8 x2070;
         /* fp+2071:0 */ u8 x2071_b0_3 : 4;
@@ -1090,6 +1147,7 @@ struct Fighter_DemoStrings {
         /* fp+2072:7 */ u8 count_specials : 1;
         /* fp+2073 */ u8 x2073;
     } x0;
+#endif
     /* fp+2070 */ int x2070_int;
 };
 
@@ -1394,6 +1452,53 @@ struct Fighter {
     /*  fp+588 */ HSD_LObj* x588;
     /*  fp+58C */ u32 x58C;
     /*  fp+590 */ FigaTree* x590;
+#ifdef PORT
+    // PORT: Fighter_ChangeMotionState() (ft/fighter.c) assigns this whole
+    // word from the motion table's x10_animCurrFlags, a flags word in PlXx.dat
+    // that the transcoder byte-swaps as a scalar, and every reader takes it
+    // apart as bitfields. MWCC fills a run from the top bit and clang from the
+    // bottom, and the u8 run sits in the word's top byte on the console and
+    // its bottom byte here, so byte and bit order are both reversed.
+    // x594_b1_loop is "this animation loops" (ftAnim_8006EBE8() makes it
+    // AOBJ_LOOP); read off the wrong bit, the fighter never leaves the action
+    // state. See docs/design/verification.md, "Bitfield order".
+    //
+    // Console bit positions, counting 31 as the most significant:
+    //   x594_b0..b7   31..24     x596_bits.x0   15..9
+    //   x594_pad      31..22     x596_bits.x7    8..6
+    //   x594_bits     21..9      x594_pad2       8..6
+    //   x597_bits      5..0
+    /*  fp+594 */ union Fighter_x594 {
+        struct Fighter_x594_x0 {
+            // On the console this struct begins at byte +596, the word's
+            // second-most-significant byte; here that is the second-least,
+            // and the word's two low bytes are the first two in memory. Only
+            // its bit positions within the word matter, so it sits at +0 and
+            // is spelled against the low halfword.
+            /* word 15..0 */ struct Fighter_x594_x0_x596_bits {
+                u16 port_pad0 : 6;
+                u16 x7 : 3;
+                u16 x0 : 7;
+            } x596_bits;
+            /* word 23..16 */ u8 port_pad1;
+            /* word 31..24 */ u8 x594_b7 : 1;
+            u8 x594_b6 : 1;
+            u8 x594_b5 : 1;
+            u8 x594_b4 : 1;
+            u8 x594_b3 : 1;
+            u8 x594_b2 : 1;
+            u8 x594_b1_loop : 1;
+            u8 x594_b0 : 1;
+        } x0;
+        struct Fighter_x594_x0_1 {
+            u32 x597_bits : 6; // FighterKind of this fighter's x590 FigaTree
+            u32 x594_pad2 : 3;
+            u32 x594_bits : 13;
+            u32 x594_pad : 10;
+        } x0_1;
+        s32 x594_s32;
+    } x594;
+#else
     /*  fp+594 */ union Fighter_x594 {
         struct Fighter_x594_x0 {
             /* fp+594:0 */ u8 x594_b0 : 1;
@@ -1417,6 +1522,7 @@ struct Fighter {
         } x0_1;
         /* fp+594 */ s32 x594_s32;
     } x594;
+#endif
     /*  fp+598 */ FigaTree* x598;
     /*  fp+59C */ struct Fighter_x59C_t* x59C;
     /*  fp+5A0 */ struct Fighter_x59C_t* x5A0;
@@ -1511,7 +1617,20 @@ struct Fighter {
         /* fp+1838 */ float x1838_percentTemp;
         /* fp+183C */ int x183C_applied;
         /* fp+1840 */ int x1840;
+#ifdef PORT
+        // PORT: two 0x2C-byte records of one shape start here and at x1870.
+        // ftColl_8007AB48() (ft/ftcoll.c) passes both to ftColl_8007A06C(),
+        // which casts each to `struct DmgResult`; on the console the three
+        // agree because every member is four bytes. Here DmgResult's pointer
+        // at +0x24 makes it 8-aligned with the pointer at native +40, so each
+        // record's base is 8-aligned too, and x1870 is a float like `dir`.
+        // Otherwise the second record is four bytes out of step and the damage
+        // just computed is read from padding. The alignment is PORT-only, so
+        // the console layout and every ASSERT_SIZE are unchanged.
+        /* fp+1844 */ ATTRIBUTE_ALIGN(8) float facing_dir_1;
+#else
         /* fp+1844 */ float facing_dir_1;
+#endif
         /* fp+1848 */ int x1848_kb_angle;
         /* fp+184C */ int x184c_damaged_hurtbox;
         /* fp+1850 */ float kb_applied;
@@ -1520,7 +1639,19 @@ struct Fighter {
         /* fp+1864 */ int x1864;
         /* fp+1868 */ HSD_GObj* x1868_source;
         /* fp+186C */ int x186c;
+#if defined(PORT) || defined(LINT)
+        // PORT: a float, and the base of the second DmgResult record; see
+        // facing_dir_1. Nothing reads it as a DmgLogEntry*: it is only taken
+        // the address of. Four bytes on PowerPC either way, so the console
+        // layout is unchanged; the alignment is PORT-only.
+#ifdef PORT
+        /* fp+1870 */ ATTRIBUTE_ALIGN(8) float x1870;
+#else
+        /* fp+1870 */ float x1870;
+#endif
+#else
         /* fp+1870 */ struct DmgLogEntry* x1870;
+#endif
         /* fp+1874 */ int x1874;
         /* fp+1878 */ int x1878;
         /* fp+187C */ float x187c;
@@ -1973,10 +2104,19 @@ struct Fighter {
 };
 ASSERT_SIZE(struct Fighter, 0x23EC);
 
+#ifdef PORT
+// Reversed for a little-endian host; generated by
+// tools/gen/gen_cmd_bitfields.py. See the note there.
+struct gmScriptEventDefault {
+    u32 value1 : 26;
+    u32 opcode : 6;
+};
+#else
 struct gmScriptEventDefault {
     u32 opcode : 6;
     u32 value1 : 26;
 };
+#endif
 
 struct ftData_UnkCountStruct {
     void* data;
@@ -1995,11 +2135,42 @@ typedef struct ftData_UnkModelStruct {
 
 struct ftData_80085FD4_ret {
     /* +0 */ const char* x0;
+#if defined(PORT) || defined(LINT)
+    // PORT: ftData_80085FD4() (ft/ftdata.c) returns a Fighter_WaitAnimData
+    // element cast to this struct, so the two have to describe the same 24
+    // bytes. Fighter_WaitAnimData declares x4 and x8 as 4-byte scalars and xC
+    // as `union CmdUnion*`, and so does this; UNK_T and size_t are eight bytes
+    // here, which moves every field after them. Each type below is the same
+    // size as the console's on PowerPC.
+    /* +4 */ u32 x4;
+#else
     /* +4 */ UNK_T x4;
+#endif
+#if defined(PORT) || defined(LINT)
+    /* +8 */ u32 x8;
+#else
     /* +8 */ size_t x8;
+#endif
+#if defined(PORT) || defined(LINT)
+    /* +C */ union CmdUnion* xC;
+#else
     /* +C */ UNK_T xC;
+#endif
+#ifdef PORT
+    // PORT: the word at +0x10 is Fighter_WaitAnimData's x10_animCurrFlags, a
+    // flags word the transcoder byte-swaps as a scalar, so these bits have to
+    // name the bits of that value. The console's u8 run at +0x10 is the top
+    // byte of the word and MWCC fills it from the top, so x10_b0 is bit 31 and
+    // x10_b1 bit 30. x10_b1 is "this animation loops" (ftAnim_8006EDD0()
+    // makes it AOBJ_LOOP); read off the wrong bit, the fighter never leaves
+    // the action state. See docs/design/verification.md, "Bitfield order".
+    u32 port_pad0 : 30; ///< the console left these unused
+    u32 x10_b1 : 1;
+    u32 x10_b0 : 1;
+#else
     /* +10:0 */ u8 x10_b0 : 1;
     /* +10:1 */ u8 x10_b1 : 1;
+#endif
     /* +14 */ uintptr_t x14;
 };
 
@@ -2023,9 +2194,90 @@ struct ftDynamics {
 struct KirbyHatStruct {
     /*  +0 */ HSD_Joint* hat_joint;
     /*  +4 */ FtPartsDesc desc;
+#if defined(PORT) || defined(LINT)
+    /// PORT: seven, not five. ftKb_SpecialN_800F16D0() (ftkirby.c) reads [5]
+    /// and [6] of Mr. Game & Watch's and Yoshi's hats, which in those files
+    /// are two more slots, and the transcoder has to convert them for the
+    /// reads to land. The slots are only named as ftDynamics: what each holds
+    /// (an Article, a joint or animation, cloth dynamics) depends on the
+    /// character, and port/data/rules/dat_blobs.c types each slot per
+    /// archive. The port reads every copy through this struct rather than
+    /// upstream's per-copy ftKbCopy* types (docs/design/dat-rules.md,
+    /// "Kirby's copy hats").
+    /*  +C */ ftDynamics* hat_dynamics[7];
+#else
     /*  +C */ ftDynamics* hat_dynamics[5];
+#endif
 };
 
+#if defined(PORT) || defined(LINT)
+/// The other layout of a copy hat's root: five of the twenty-five copy
+/// archives (Donkey Kong, Falco, Mr. Game & Watch, Mewtwo, Jigglypuff) begin
+/// `1 P 2 P` where the rest begin `P 1 P`.
+///
+/// PORT: ftKb_LoadHatParts() (ftkirby.c) reads these as an FtPartsDesc at +0,
+/// an ftData_x8_x8 at +8, a part mask at +0x10 (`hat_dynamics[1]`) and a
+/// joint at +0x14 (`hat_dynamics[2]`), through KirbyHatStruct's names. On the
+/// console those land on the same bytes because every member is four wide.
+/// Here port/data/rules/dat_roots.c types the five roots with this struct,
+/// each native offset pinned to the KirbyHatStruct member the game reads it
+/// through. The mask is a u32 so the transcoder swaps it, where a pointer
+/// slot the file does not relocate would become null. See
+/// docs/design/dat-rules.md, "Kirby's copy hats".
+struct KirbyHatStructAlt {
+    /*  +0 */ u32 model_num;          ///< FtPartsDesc.model_num
+    /*  +4 */ void* (*vis_table)[4];  ///< FtPartsDesc.vis_table
+    /*  +8 */ u32 x8;                 ///< ftData_x8_x8.x8
+    /*  +C */ u16** xC;               ///< ftData_x8_x8.xC
+    /// Kirby's parts the hat hides; ftKb_SpecialN_800EF040().
+    /* +10 */ u32 part_mask;
+    /* +14 */ HSD_Joint* hat_joint;   ///< ftKb_SpecialN_800EF438
+    /* +18 */ void* slot3;            ///< per archive; dat_blobs.c
+    /* +1C */ void* slot4;
+    /* +20 */ void* slot5;
+    /* +24 */ void* slot6;
+};
+#endif
+#ifdef PORT
+_Static_assert(offsetof(struct KirbyHatStructAlt, model_num) ==
+                   offsetof(struct FtPartsDesc, model_num),
+               "(FtPartsDesc*) hat reads model_num at +0");
+_Static_assert(offsetof(struct KirbyHatStructAlt, vis_table) ==
+                   offsetof(struct FtPartsDesc, vis_table),
+               "(FtPartsDesc*) hat reads vis_table where FtPartsDesc has it");
+_Static_assert(offsetof(struct KirbyHatStructAlt, x8) ==
+                   offsetof(struct KirbyHatStruct, desc.vis_table),
+               "&hat->desc.vis_table is read as an ftData_x8_x8");
+_Static_assert(offsetof(struct KirbyHatStructAlt, part_mask) ==
+                   offsetof(struct KirbyHatStruct, hat_dynamics[1]),
+               "the mask is read as hat_dynamics[1]");
+_Static_assert(offsetof(struct KirbyHatStructAlt, hat_joint) ==
+                   offsetof(struct KirbyHatStruct, hat_dynamics[2]),
+               "the joint is read as hat_dynamics[2]");
+_Static_assert(offsetof(struct KirbyHatStructAlt, slot3) ==
+                   offsetof(struct KirbyHatStruct, hat_dynamics[3]),
+               "slot3 is read as hat_dynamics[3]");
+_Static_assert(offsetof(struct KirbyHatStructAlt, slot6) ==
+                   offsetof(struct KirbyHatStruct, hat_dynamics[6]),
+               "slot6 is read as hat_dynamics[6]");
+#endif
+#if defined(PORT) || defined(LINT)
+/// What Mr. Game & Watch's copy hat keeps in slot 4 (PlKbCpGw.dat, data+0):
+/// the colours his items take.
+///
+/// PORT: ftKb_SpecialN_800F14B4() (ftkirby.c) reads +4 into a material's
+/// diffuse and +8 into fp->x610_color_rgba[1], and ftKb_Init_800EEB00() and
+/// ftKb_Init_800EEB1C() hand them out as ftGw_Init_8014A7F4() and
+/// ftGw_Init_8014A814() do from his own attributes. On the console the last
+/// two read the slot as an ftDynamics, whose second and third words are at
+/// other offsets here. The file holds more after these (0x01280000, 1.0f,
+/// 1.0f ...) that nothing reads.
+struct KirbyHatGwAttrs {
+    /* +0 */ f32 x0;
+    /* +4 */ u32 x4_color;
+    /* +8 */ u32 x8_outline;
+};
+#endif
 /// @name Kirby's copy abilities
 /// The data of `ftDataKirbyCopy*`, one per fighter he can copy. Most give
 /// him a hat (#ftKbCopyHat), the rest parts added to his own model

@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "ftCo_Attack100.h"
 #include "ftCo_CaptureCut.h"
 #include <melee/ft/fighter.h>
@@ -93,6 +96,12 @@ void fn_800DB790(Fighter_GObj* gobj)
     }
 
     ftCommon_8007E2F4(fp, 0x1FF);
+#ifdef PORT
+    // PORT: Slippi's PreventWobbling (Init Wobble Count Ground), at +0xF0,
+    // the epilogue. The asm has no online test, so the hook runs whenever the
+    // Slippi mod is on (port/mods/slippi/slippi_mod.c).
+    port_hook_fighter_grab_wait_enter(fp);
+#endif
 }
 
 void fn_800DB8A4(Fighter_GObj* gobj)
@@ -191,6 +200,12 @@ void fn_800DBAE4(Fighter_GObj* gobj)
     }
 
     ftCommon_8007E2F4(fp, 0x1FF);
+#ifdef PORT
+    // PORT: Slippi's PreventWobbling (Init Wobble Count Air), at +0xF0, the
+    // epilogue. The asm has no online test, so the hook runs whenever the
+    // Slippi mod is on (port/mods/slippi/slippi_mod.c).
+    port_hook_fighter_grab_wait_enter(fp);
+#endif
 }
 
 static inline void fn_800DBBF8_noinline(Fighter_GObj* gobj1, Fighter* gobj2)
@@ -310,7 +325,16 @@ void fn_800DC014(Fighter_GObj* gobj)
 bool fn_800DC044(Fighter_GObj* gobj)
 {
     Fighter* fp = GET_FIGHTER(gobj);
+#ifdef PORT
+    // PORT: the jump out of a grab release, which a player with tap jump off
+    // does not get from the stick (port/game/tap_jump.c); X or Y pressed
+    // early in the grab (capturewait.xC) still jumps.
+    if (fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold &&
+        !port_hook_fighter_tap_jump_suppressed(fp))
+    {
+#else
     if (fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold) {
+#endif
         return true;
     }
     return false;

@@ -44,6 +44,9 @@ typedef struct FtSFX FtSFX;
 typedef struct gmScriptEventDefault gmScriptEventDefault;
 typedef struct IKState IKState;
 typedef struct KirbyHatStruct KirbyHatStruct;
+#if defined(PORT) || defined(LINT)
+typedef struct KirbyHatGwAttrs KirbyHatGwAttrs;
+#endif
 typedef struct MotionState MotionState;
 typedef struct TempS TempS;
 typedef struct UnkCostumeStruct UnkCostumeStruct;

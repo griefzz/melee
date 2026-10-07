@@ -185,6 +185,22 @@ struct plAllocInfo;
 /// Grab-mash shake table
 /* 4D652C */ extern struct Fighter_ShakeTable_t* Fighter_GrabMashShake;
 
+#if defined(PORT) || defined(LINT)
+// PORT: Fighter_804D6534 is an element of PlCo.dat's pointer-list root that
+// the decomp declares UNK_T, which tells the DAT transcoder nothing. This
+// names it; it lives here because the DAT schema is generated from these
+// headers, and is guarded PORT || LINT so both schema passes see it
+// (docs/design/dat-rules.md, "PlCo.dat's common data").
+
+/// The respawn platform: the joint and the animation played on it.
+/// ftCo_800D4FF4() (ft/ft_0D4D.c) passes element 0 to ftCommon_SetAccessory(),
+/// which takes an `HSD_Joint*`, and element 1 to ftCommon_8007E690(), which
+/// takes an `HSD_AnimJoint*`.
+typedef struct Fighter_RespawnPlatform_t {
+    HSD_Joint* joint;
+    HSD_AnimJoint* anim;
+} Fighter_RespawnPlatform_t;
+#endif
 /* 4D6530 */ extern struct ftDamageShifts* Fighter_804D6530;
 /* 4D6534 */ extern UNK_T Fighter_804D6534;
 /* 4D6538 */ extern struct Fighter_804D653C_t* Fighter_804D6538;

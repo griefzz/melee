@@ -1,4 +1,7 @@
 #include "ftpikachuspecials.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <Runtime/platform.h>
 
@@ -259,7 +262,15 @@ void ftPk_SpecialS0_Anim(HSD_GObj* gobj)
 
     if (fp->x914[0].state == HitCapsule_Enabled) {
         float damage_amount = fp->mv.pk.unk3.x0 * sa->x2C + sa->x28;
+#ifdef PORT
+        // PORT: x28 and x2C are floats from the fighter's file, and the
+        // console's __cvt_fp2unsigned makes a negative damage 0; see
+        // docs/design/verification.md, "Floats converted to unsigned".
+        ftColl_8007ABD0(&fp->x914[0], port_cvt_fp2unsigned(damage_amount),
+                        gobj);
+#else
         ftColl_8007ABD0(&fp->x914[0], damage_amount, gobj);
+#endif
     }
 
     if (fp->cmd_vars[0]) {
@@ -277,7 +288,15 @@ void ftPk_SpecialAirS0_Anim(HSD_GObj* gobj)
 
     if (fp->x914[0].state == HitCapsule_Enabled) {
         float damage_amount = fp->mv.pk.unk3.x0 * sa->x2C + sa->x28;
+#ifdef PORT
+        // PORT: x28 and x2C are floats from the fighter's file, and the
+        // console's __cvt_fp2unsigned makes a negative damage 0; see
+        // docs/design/verification.md, "Floats converted to unsigned".
+        ftColl_8007ABD0(&fp->x914[0], port_cvt_fp2unsigned(damage_amount),
+                        gobj);
+#else
         ftColl_8007ABD0(&fp->x914[0], damage_amount, gobj);
+#endif
     }
 
     if (fp->cmd_vars[0]) {

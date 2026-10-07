@@ -6,6 +6,23 @@
 #include <melee/ft/inlines.h>
 #include <melee/it/kinds/itsscope.h>
 
+#ifdef PORT
+// PORT: both read Fighter at the console's byte offsets. fp+0x2340 is `mv`,
+// the motion vars, which is elsewhere here; at the console's offset the
+// Super Scope's charge timer and flag land in `fp->cpu`. The pads are taken
+// from Fighter's own layout, so the call sites keep the names they were
+// written with.
+typedef struct {
+    u8 pad_2340[offsetof(Fighter, mv)];
+    f32 x2340; // fp->mv + 0
+} FighterOverlay;
+
+typedef struct {
+    u8 pad[offsetof(Fighter, mv)];
+    f32 timer; // fp->mv + 0
+    s32 flag;  // fp->mv + 4
+} ItemScopeVars;
+#else
 typedef struct {
     u8 pad_1A4C[0x1A4C];
     f32 x1A4C; // 0x1A4C
@@ -23,6 +40,7 @@ typedef struct {
     f32 timer; // 0x2340
     s32 flag;  // 0x2344
 } ItemScopeVars;
+#endif
 
 FtMotionId fn_800D769C(Fighter* ft, FtMotionId msid)
 {

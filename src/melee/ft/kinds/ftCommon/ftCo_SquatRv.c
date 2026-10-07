@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "ftCo_SquatRv.h"
 
 #include <Runtime/platform.h>
@@ -31,7 +34,19 @@
 bool ftCo_SquatRv_CheckInput(Fighter_GObj* gobj)
 {
     Fighter* fp = GET_FIGHTER(gobj);
+#ifdef PORT
+    // PORT: --ucf. UCF 0.84's DBOOC ("dash back out of crouch") is injected
+    // at this function's +0x14, the load of x94: on the first frame the stick
+    // leaves the dead zone on the rim, the release threshold is raised to
+    // 0.59 so those coordinates release the crouch. Inert unless --ucf
+    // (port/mods/slippi/ucf.c).
+    if (fp->input.lstick[0].y >
+        -port_hook_fighter_squatwait_release_threshold(
+            p_ftCommonData->x94, fp))
+    {
+#else
     if (fp->input.lstick[0].y > -p_ftCommonData->x94) {
+#endif
         ftCo_SquatRv_Enter(gobj);
         return true;
     }

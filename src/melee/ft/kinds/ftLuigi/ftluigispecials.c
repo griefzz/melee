@@ -1,4 +1,7 @@
 #include "ftluigispecials.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <Runtime/platform.h>
 
@@ -343,11 +346,23 @@ void ftLg_SpecialS_Anim(HSD_GObj* gobj)
     if (!fp->mv.lg.SpecialS.isMisfire &&
         fp->x914[0].state == HitCapsule_Enabled)
     {
+#ifdef PORT
+        // PORT: the slope and tilt are floats from the fighter's file, and
+        // the console's __cvt_fp2unsigned makes a negative damage 0; see
+        // docs/design/verification.md, "Floats converted to unsigned".
+        ftColl_8007ABD0(&fp->x914[0],
+                        port_cvt_fp2unsigned(
+                            fp->mv.lg.SpecialS.chargeFrames *
+                                sa->x14_LUIGI_GREENMISSILE_DAMAGE_SLOPE +
+                            sa->x10_LUIGI_GREENMISSILE_DAMAGE_TILT),
+                        gobj);
+#else
         ftColl_8007ABD0(&fp->x914[0],
                         fp->mv.lg.SpecialS.chargeFrames *
                                 sa->x14_LUIGI_GREENMISSILE_DAMAGE_SLOPE +
                             sa->x10_LUIGI_GREENMISSILE_DAMAGE_TILT,
                         gobj);
+#endif
     }
 
     if (fp->cmd_vars[0] != 0) {
@@ -367,11 +382,23 @@ void ftLg_SpecialAirS_Anim(HSD_GObj* gobj)
     if (!fp->mv.lg.SpecialS.isMisfire &&
         fp->x914[0].state == HitCapsule_Enabled)
     {
+#ifdef PORT
+        // PORT: the slope and tilt are floats from the fighter's file, and
+        // the console's __cvt_fp2unsigned makes a negative damage 0; see
+        // docs/design/verification.md, "Floats converted to unsigned".
+        ftColl_8007ABD0(&fp->x914[0],
+                        port_cvt_fp2unsigned(
+                            fp->mv.lg.SpecialS.chargeFrames *
+                                sa->x14_LUIGI_GREENMISSILE_DAMAGE_SLOPE +
+                            sa->x10_LUIGI_GREENMISSILE_DAMAGE_TILT),
+                        gobj);
+#else
         ftColl_8007ABD0(&fp->x914[0],
                         fp->mv.lg.SpecialS.chargeFrames *
                                 sa->x14_LUIGI_GREENMISSILE_DAMAGE_SLOPE +
                             sa->x10_LUIGI_GREENMISSILE_DAMAGE_TILT,
                         gobj);
+#endif
     }
 
     if (fp->cmd_vars[0] != 0) {
@@ -503,11 +530,23 @@ void ftLg_SpecialSMisfire_Anim(HSD_GObj* gobj)
     if (!fp->mv.lg.SpecialS.isMisfire &&
         fp->x914[0].state == HitCapsule_Enabled)
     {
+#ifdef PORT
+        // PORT: the slope and tilt are floats from the fighter's file, and
+        // the console's __cvt_fp2unsigned makes a negative damage 0; see
+        // docs/design/verification.md, "Floats converted to unsigned".
+        ftColl_8007ABD0(&fp->x914[0],
+                        port_cvt_fp2unsigned(
+                            fp->mv.lg.SpecialS.chargeFrames *
+                                sa->x14_LUIGI_GREENMISSILE_DAMAGE_SLOPE +
+                            sa->x10_LUIGI_GREENMISSILE_DAMAGE_TILT),
+                        gobj);
+#else
         ftColl_8007ABD0(&fp->x914[0],
                         fp->mv.lg.SpecialS.chargeFrames *
                                 sa->x14_LUIGI_GREENMISSILE_DAMAGE_SLOPE +
                             sa->x10_LUIGI_GREENMISSILE_DAMAGE_TILT,
                         gobj);
+#endif
     }
 
     if (fp->cmd_vars[0] != 0) {
@@ -527,11 +566,23 @@ void ftLg_SpecialAirSMisfire_Anim(HSD_GObj* gobj)
     if (!fp->mv.lg.SpecialS.isMisfire &&
         fp->x914[0].state == HitCapsule_Enabled)
     {
+#ifdef PORT
+        // PORT: the slope and tilt are floats from the fighter's file, and
+        // the console's __cvt_fp2unsigned makes a negative damage 0; see
+        // docs/design/verification.md, "Floats converted to unsigned".
+        ftColl_8007ABD0(&fp->x914[0],
+                        port_cvt_fp2unsigned(
+                            fp->mv.lg.SpecialS.chargeFrames *
+                                sa->x14_LUIGI_GREENMISSILE_DAMAGE_SLOPE +
+                            sa->x10_LUIGI_GREENMISSILE_DAMAGE_TILT),
+                        gobj);
+#else
         ftColl_8007ABD0(&fp->x914[0],
                         fp->mv.lg.SpecialS.chargeFrames *
                                 sa->x14_LUIGI_GREENMISSILE_DAMAGE_SLOPE +
                             sa->x10_LUIGI_GREENMISSILE_DAMAGE_TILT,
                         gobj);
+#endif
     }
 
     if (fp->cmd_vars[0] != 0) {

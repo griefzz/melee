@@ -125,12 +125,24 @@ void ftLk_SpecialHi_Coll(HSD_GObj* gobj)
 void ftLk_SpecialAirHi_Coll(HSD_GObj* gobj)
 {
     u8 _[8];
+#ifdef PORT
+    // PORT: the console's code reads the attributes through a Fighter*, and
+    // Fighter.facing_dir1 is at +0x30 only there. The landing lag is
+    // ftLk_DatAttrs.x30, as ftLk_SpecialAirHi_Anim() passes it.
+    ftLk_DatAttrs* da = GET_FIGHTER(gobj)->dat_attrs;
+    if (ft_CheckGroundAndLedge(gobj, 0)) {
+        ftCo_LandingFallSpecial_Enter(gobj, false, da->x30);
+    } else if (ftCliffCommon_80081298(gobj)) {
+        return;
+    }
+#else
     Fighter* fp = GET_FIGHTER(gobj)->dat_attrs;
     if (ft_CheckGroundAndLedge(gobj, 0)) {
         ftCo_LandingFallSpecial_Enter(gobj, false, fp->facing_dir1);
     } else if (ftCliffCommon_80081298(gobj)) {
         return;
     }
+#endif
 }
 
 static void doColl(HSD_GObj* gobj)

@@ -1207,6 +1207,11 @@ void ftYs_SpecialAirSStart_1_Coll(Fighter_GObj* gobj)
 
 static inline void stack_pad_hack(void)
 {
+#ifdef PORT
+    // PORT: seven reads through a null gobj, to shape MWCC's stack frame.
+    // Address 0 is readable on a GameCube; on the host each one faults, and
+    // the port does not need the frame shape.
+#else
     /// @todo egregious stack padding hack
     GET_FIGHTER(NULL);
     GET_FIGHTER(NULL);
@@ -1215,6 +1220,7 @@ static inline void stack_pad_hack(void)
     GET_FIGHTER(NULL);
     GET_FIGHTER(NULL);
     GET_FIGHTER(NULL);
+#endif
 }
 
 void ftYs_SpecialAirSLoop_2_Coll(Fighter_GObj* gobj)

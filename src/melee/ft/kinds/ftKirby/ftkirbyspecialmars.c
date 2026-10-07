@@ -1,4 +1,7 @@
 #include "ftkirbyspecialmars.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <melee/ft/forward.h>
 
@@ -435,11 +438,22 @@ void ftKb_MsSpecialNEnd_Anim(Fighter_GObj* gobj)
         i = 0;
         do {
             if ((s32) hit_fp->x914[0].state == HitCapsule_Enabled) {
+#ifdef PORT
+                // PORT: the damage words come from the file and are read as
+                // s32, and the console's __cvt_fp2unsigned makes a negative
+                // sum 0; see docs/design/verification.md, "Floats converted
+                // to unsigned".
+                dmg = port_cvt_fp2unsigned(
+                    (f32) (s32) (ms_da->base_damage +
+                                 (fp->mv.ms.specialn.cur_frame / 30) *
+                                     ms_da->additional_damage_per_iteration));
+#else
                 dmg =
                     (u32) (f32) (s32) (ms_da->base_damage +
                                        (fp->mv.ms.specialn.cur_frame / 30) *
                                            ms_da
                                                ->additional_damage_per_iteration);
+#endif
                 ftColl_8007ABD0(hit_fp->x914, dmg, gobj);
             }
             i += 1;
@@ -470,11 +484,22 @@ void ftKb_MsSpecialAirNEnd_Anim(Fighter_GObj* gobj)
         i = 0;
         do {
             if ((s32) hit_fp->x914[0].state == HitCapsule_Enabled) {
+#ifdef PORT
+                // PORT: the damage words come from the file and are read as
+                // s32, and the console's __cvt_fp2unsigned makes a negative
+                // sum 0; see docs/design/verification.md, "Floats converted
+                // to unsigned".
+                dmg = port_cvt_fp2unsigned(
+                    (f32) (s32) (ms_da->base_damage +
+                                 (fp->mv.ms.specialn.cur_frame / 30) *
+                                     ms_da->additional_damage_per_iteration));
+#else
                 dmg =
                     (u32) (f32) (s32) (ms_da->base_damage +
                                        (fp->mv.ms.specialn.cur_frame / 30) *
                                            ms_da
                                                ->additional_damage_per_iteration);
+#endif
                 ftColl_8007ABD0(hit_fp->x914, dmg, gobj);
             }
             i += 1;

@@ -16,11 +16,23 @@
 #include <melee/ft/kinds/ftCommon/ftCo_FallSpecial.h>
 #include <melee/ft/kinds/ftCommon/ftCo_SpecialAir.h>
 #include <melee/ft/types.h>
+#ifdef PORT
+#include <port/hooks.h> // tap jump off; port/game/tap_jump.c
+#endif
 
 bool ftPe_Float_CheckContinueInput(Fighter* fp)
 {
+#ifdef PORT
+    // PORT: up held is a held jump, which starts the float at the top of a
+    // jump and keeps it going; with tap jump off (port/game/tap_jump.c) only
+    // X or Y held does.
+    return (fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold &&
+            !port_hook_fighter_tap_jump_suppressed(fp)) ||
+           fp->input.held_buttons[0] & HSD_PAD_XY;
+#else
     return fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold ||
            fp->input.held_buttons[0] & HSD_PAD_XY;
+#endif
 }
 
 static bool checkStartFloatInput(HSD_GObj* gobj)
@@ -95,9 +107,17 @@ void ftPe_Float_IASA(HSD_GObj* gobj)
     Fighter* fp = gobj->user_data;
     if (!ftCo_SpecialAir_CheckInput(gobj) && !ftPe_8011BE80(gobj)) {
         /// @todo Call #checkContinueFloatInput
+#ifdef PORT
+        // PORT: the same test as ftPe_Float_CheckContinueInput().
+        bool float_input =
+            (fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold &&
+             !port_hook_fighter_tap_jump_suppressed(fp)) ||
+            fp->input.held_buttons[0] & HSD_PAD_XY;
+#else
         bool float_input =
             fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold ||
             fp->input.held_buttons[0] & HSD_PAD_XY;
+#endif
         if (!float_input) {
             ftPe_UpdateFloatDir(gobj);
         }

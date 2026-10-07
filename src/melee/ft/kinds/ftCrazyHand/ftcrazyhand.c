@@ -632,6 +632,14 @@ void ftCh_Init_OnLoad(HSD_GObj* gobj)
     fp->mv.ch.unk0.x2C = 0;
     fp->mv.ch.unk0.x30 = 0;
     fp->mv.ch.unk0.x34 = 0;
+#ifdef PORT
+    // PORT: the four zeros above are grab's lasers on the console; here the
+    // lasers sit past unk0 (ftMasterHand/types.h).
+    fp->mv.ch.grab.x28 = NULL;
+    fp->mv.ch.grab.x2C = NULL;
+    fp->mv.ch.grab.x30 = NULL;
+    fp->mv.ch.grab.x34 = NULL;
+#endif
     fp->mv.ch.unk0.x38 = -1;
     fp->mv.ch.unk0.x3C = -1;
     fp->mv.ch.unk0.x40 = -1;

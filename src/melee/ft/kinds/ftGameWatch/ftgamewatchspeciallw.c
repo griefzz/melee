@@ -1,4 +1,7 @@
 #include "ftgamewatchspeciallw.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <melee/ft/forward.h>
 #include <melee/lb/forward.h>
@@ -678,14 +681,30 @@ void ftGw_SpecialLwShoot_ReleaseOil(HSD_GObj* gobj)
         {
             ftGameWatchAttributes* sa = getFtSpecialAttrs(fp);
 
+#ifdef PORT
+            // PORT: the damage multiplier is a float from the fighter's
+            // file, and the console's __cvt_fp2unsigned makes a negative
+            // product 0; see docs/design/verification.md, "Floats converted
+            // to unsigned".
+            fp->cmd_vars[1] =
+                port_cvt_fp2unsigned(fp->u.gw.x223C_panicDamage *
+                                     sa->x78_GAMEWATCH_PANIC_DAMAGE_MUL);
+#else
             fp->cmd_vars[1] = fp->u.gw.x223C_panicDamage *
                               sa->x78_GAMEWATCH_PANIC_DAMAGE_MUL;
+#endif
 
             {
                 float panicDamage =
                     fp->cmd_vars[1] + sa->x74_GAMEWATCH_PANIC_DAMAGE_ADD;
 
+#ifdef PORT
+                // PORT: the damage offset is a float from the fighter's
+                // file; a negative sum converts to 0 as on the console.
+                fp->cmd_vars[1] = port_cvt_fp2unsigned(panicDamage);
+#else
                 fp->cmd_vars[1] = panicDamage;
+#endif
                 fp->u.gw.x2238_panicCharge = ftGw_Panic_Empty;
                 fp->u.gw.x223C_panicDamage = 0;
             }
@@ -712,13 +731,29 @@ void ftGw_SpecialAirLwShoot_ReleaseOil(HSD_GObj* gobj)
         {
             ftGameWatchAttributes* sa = getFtSpecialAttrs(fp);
 
+#ifdef PORT
+            // PORT: the damage multiplier is a float from the fighter's
+            // file, and the console's __cvt_fp2unsigned makes a negative
+            // product 0; see docs/design/verification.md, "Floats converted
+            // to unsigned".
+            fp->cmd_vars[1] =
+                port_cvt_fp2unsigned(fp->u.gw.x223C_panicDamage *
+                                     sa->x78_GAMEWATCH_PANIC_DAMAGE_MUL);
+#else
             fp->cmd_vars[1] = fp->u.gw.x223C_panicDamage *
                               sa->x78_GAMEWATCH_PANIC_DAMAGE_MUL;
+#endif
 
             {
                 float panicDamage =
                     fp->cmd_vars[1] + sa->x74_GAMEWATCH_PANIC_DAMAGE_ADD;
+#ifdef PORT
+                // PORT: the damage offset is a float from the fighter's
+                // file; a negative sum converts to 0 as on the console.
+                fp->cmd_vars[1] = port_cvt_fp2unsigned(panicDamage);
+#else
                 fp->cmd_vars[1] = panicDamage;
+#endif
             }
 
             fp->u.gw.x2238_panicCharge = 0;

@@ -13,9 +13,17 @@ struct ftKoopa_FighterVars {
 union ftKoopa_MotionVars {
     /// @todo Proper state name.
     struct ftKoopa_State1Vars {
+#if defined(PORT) || defined(LINT)
+        int x0;
+#else
         UNK_T x0;
+#endif
         bool x4;
+#if defined(PORT) || defined(LINT)
+        int x8;
+#else
         UNK_T x8;
+#endif
         bool xC;
     } unk1;
     /// @todo Possibly #ftKoopa_State1Vars.

@@ -630,6 +630,14 @@ void ftMh_Init_OnLoad(HSD_GObj* gobj)
         fp->mv.mh.unk0.x38 = 0;
         fp->mv.mh.unk0.x3C = 0;
         fp->mv.mh.unk0.x40 = 0;
+#ifdef PORT
+        // PORT: the four zeros above are fingerbeam's lasers on the console;
+        // here the lasers sit past unk0 (types.h).
+        fp->mv.mh.fingerbeam.x34 = NULL;
+        fp->mv.mh.fingerbeam.x38 = NULL;
+        fp->mv.mh.fingerbeam.x3C = NULL;
+        fp->mv.mh.fingerbeam.x40 = NULL;
+#endif
         fp->mv.mh.unk0.x28 = -1;
         fp->mv.mh.unk0.x2C = -1;
         fp->mv.mh.unk0.x30 = -1;

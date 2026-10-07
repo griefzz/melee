@@ -32,7 +32,11 @@ void ftCo_800BC458(Fighter_GObj* gobj)
 void ftCo_800BC4A8(Fighter_GObj* gobj)
 {
     Fighter* fp = GET_FIGHTER(gobj);
+#if defined(PORT) || defined(LINT)
+    if (fp->mv.co.capturekoopa.x8) {
+#else
     if (fp->mv.ca.specialhi.vel.y) {
+#endif
         HSD_JObj* jobj =
             fp->parts[ftParts_GetBoneIndex(fp, FtPart_YRotN)].joint;
         float mv_xC = fp->mv.co.capturekoopa.xC;
@@ -44,12 +48,20 @@ void ftCo_800BC4A8(Fighter_GObj* gobj)
             HSD_JObjAddTranslationZ(jobj, fp_x1A50);
         }
         if (ABS(fp_x1A51 + HSD_JObjGetTranslationY(jobj)) <=
+#if defined(PORT) || defined(LINT)
+            fp->mv.co.capturekoopa.x10)
+#else
             fp->mv.co.walk.fast_anim_frame)
+#endif
         {
             HSD_JObjAddTranslationY(jobj, fp_x1A51);
         }
         fp->mv.co.capturekoopa.x8 -= 1;
+#if defined(PORT) || defined(LINT)
+        if (fp->mv.co.capturekoopa.x8 <= 0 && !fp->mv.co.capturekoopa.x0) {
+#else
         if (fp->mv.ca.specialhi.vel.y <= 0 && !fp->mv.co.capturekoopa.x0) {
+#endif
             ftAnim_SetAnimRate(gobj, 1);
             fp->mv.co.capturekoopa.x8 = 0;
         }
@@ -72,7 +84,11 @@ static inline void inlineA0(Fighter_GObj* gobj, Fighter_GObj* vic_gobj,
     fp->x221B.x221B_b7 = false;
     fp->facing_dir = vic_fp->facing_dir;
     ftCommon_InitGrab(fp, 0, ftKp_SpecialS_80132DC0(fp->victim_gobj));
+#if defined(PORT) || defined(LINT)
+    fp->mv.co.capturekoopa.x8 = 0;
+#else
     fp->mv.ca.specialhi.vel.y = 0;
+#endif
     ftCo_800DB368(vic_fp, fp);
     cb(gobj);
     ftCommon_8007D5D4(fp);

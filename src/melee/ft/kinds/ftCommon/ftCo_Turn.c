@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "ftCo_Turn.h"
 
 #include <melee/ft/forward.h>
@@ -103,6 +106,13 @@ void ftCo_Turn_IASA(Fighter_GObj* gobj)
     }
     if (!fp->mv.co.turn.has_turned) {
         fp->facing_dir = -fp->facing_dir;
+#ifdef PORT
+        // PORT: --ucf. UCF 0.84's dashback is injected at this function's
+        // +0x4C, the store above: on frame 2 of a tilt turn whose raw stick
+        // moved like a smash, it sets has_turned and just_turned so the dash
+        // check below fires. Inert unless --ucf (port/mods/slippi/ucf.c).
+        port_hook_fighter_turn_flipped(fp);
+#endif
     }
 
     RETURN_IF(ftCo_SpecialS_CheckInput(gobj));

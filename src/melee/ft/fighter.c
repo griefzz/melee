@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "fighter.h"
 
 #include <math.h>
@@ -859,6 +862,12 @@ Fighter_GObj* Fighter_Create(struct plAllocInfo* input)
      * contents. For example, Luigi's @c x222C_cycloneCharge.
      */
     fp = HSD_ObjAlloc(&fighter_alloc_data);
+#ifdef PORT
+    // PORT: Slippi's required "Common/Initialize Player Data" code zeroes the
+    // fighter at Fighter_Create+0x54, this instruction, which removes the bug
+    // above. The Slippi mod does the same through this hook.
+    port_hook_sim_object_allocated(fp, sizeof(Fighter));
+#endif
     fp->dat_attrs_backup = HSD_ObjAlloc(&fighter_dat_attrs_alloc_data);
     GObj_InitUserData(gobj, 4U, &Fighter_Unload_8006DABC, fp);
     ftData_8008572C(input->internal_id);
@@ -1596,9 +1605,22 @@ void Fighter_procAnim(Fighter_GObj* gobj)
 
         if (!fp->is_sub_fighter && Camera_80031144() == 1.0f) {
             if (fp->dmg.x1830_percent < p_ftCommonData->x7B0) {
+#ifdef PORT
+                // PORT: the fighter_offscreen hook. The Slippi mod's netplay
+                // rule (Online/Core/BrawlOffscreenDamage.asm, at this
+                // function's +0x520) is "outside the camera limits"; -1 means
+                // no mod has an opinion and the magnifier decides, as on the
+                // console.
+                int offscreen = port_hook_fighter_offscreen(-1, fp);
+                if ((offscreen >= 0 ? offscreen
+                                    : ifMagnify_802FC998(fp->player_idx)) &&
+                    (Player_GetMoreFlagsBit3(fp->player_idx) != 0))
+                {
+#else
                 if (ifMagnify_802FC998(fp->player_idx) &&
                     (Player_GetMoreFlagsBit3(fp->player_idx) != 0))
                 {
+#endif
                     fp->dmg.x1910++;
                 } else {
                     fp->dmg.x1910 = 0;
@@ -1838,6 +1860,13 @@ void Fighter_procInput(Fighter_GObj* gobj)
 
                 fp->input.triggers[0] = (tempf0 > tempf1) ? tempf0 : tempf1;
             }
+#ifdef PORT
+            // PORT: the sticks and trigger are read and the dead zones not yet
+            // applied. A port-side controller (a slippi-ai agent driving a
+            // CPU) replaces what the virtual pad gave here, in the human
+            // path's units.
+            port_hook_fighter_sticks_read(fp);
+#endif
 
             if (ABS(fp->input.lstick[0].x) <=
                 p_ftCommonData->horizontal_stick_deadzone)
@@ -1899,6 +1928,12 @@ void Fighter_procInput(Fighter_GObj* gobj)
                 }
             }
 
+#ifdef PORT
+            // PORT: the input is read and dead-zoned and the edges are not
+            // yet derived. Slippi's recorder takes its pre-frame snapshot
+            // here (Fighter_procInput+0x3D0).
+            port_hook_fighter_input_read(fp);
+#endif
             Fighter_procInput_Inner1(fp);
 
             // Fighter_ClampSpecificValue
@@ -2034,6 +2069,13 @@ void Fighter_procInput(Fighter_GObj* gobj)
                 fp->activity_timer.lstick.x = 0;
             }
 
+#ifdef PORT
+            // PORT: --ucf. UCF 0.84's pad buffer is injected at this
+            // function's +0x750, the load of x678 below; it records the raw
+            // stick and snaps 1.0 cardinals into the processed one. Inert
+            // unless --ucf (port/mods/slippi/ucf.c).
+            port_hook_fighter_pad_processed(fp);
+#endif
             // Fighter_ClampSpecificValue
             fp->active_duration.trigger++;
             if (fp->active_duration.trigger > 254) {
@@ -2193,17 +2235,43 @@ void Fighter_procUpdate(Fighter_GObj* gobj)
                 } else {
                     float kb_angle = atan2f(kb_vel_y, kb_vel_x);
 
+#ifdef PORT
+                    // PORT: the console fuses x*x onto y*y (fmadds at
+                    // Fighter_procUpdate+0x10C), and so does the port; see
+                    // docs/design/build.md, "Rounding and division".
+                    if (sqrtf(__builtin_fmaf(kb_vel_x, kb_vel_x,
+                                             kb_vel_y * kb_vel_y)) <
+                        p_ftCommonData->x204_knockbackFrameDecay)
+#else
                     if (sqrtf(kb_vel_x * kb_vel_x + kb_vel_y * kb_vel_y) <
                         p_ftCommonData->x204_knockbackFrameDecay)
+#endif
                     {
                         p_kb_vel->x = p_kb_vel->y = 0;
                     } else {
+#ifdef PORT
+                        // PORT: MWCC contracted each of these into one fnmsubs
+                        // (Fighter_procUpdate+0x19C and +0x1B8), and the port
+                        // fuses them the same way (docs/design/build.md,
+                        // "Rounding and division"). The decay runs every
+                        // frame of hitstun and feeds itself, so a second
+                        // rounding compounds, and ftCo_Damage_Coll()
+                        // (ftCo_Damage.c) compares the result against a
+                        // threshold to choose how the fighter lands.
+                        p_kb_vel->x = __builtin_fmaf(
+                            -p_ftCommonData->x204_knockbackFrameDecay,
+                            cosf(kb_angle), p_kb_vel->x);
+                        p_kb_vel->y = __builtin_fmaf(
+                            -p_ftCommonData->x204_knockbackFrameDecay,
+                            sinf(kb_angle), p_kb_vel->y);
+#else
                         p_kb_vel->x -=
                             p_ftCommonData->x204_knockbackFrameDecay *
                             cosf(kb_angle);
                         p_kb_vel->y -=
                             p_ftCommonData->x204_knockbackFrameDecay *
                             sinf(kb_angle);
+#endif
                     }
                 }
 
@@ -2239,8 +2307,15 @@ void Fighter_procUpdate(Fighter_GObj* gobj)
                 float kb_y = pAtkShieldKB->y;
                 float atkShieldKBAngle = atan2f(kb_y, kb_x);
 
+#ifdef PORT
+                // PORT: fused on the console (fmadds at
+                // Fighter_procUpdate+0x27C), as the knockback check above is.
+                if (sqrtf(__builtin_fmaf(kb_x, kb_x, kb_y * kb_y)) <
+                    p_ftCommonData->x3E8_shieldKnockbackFrameDecay)
+#else
                 if (sqrtf(kb_x * kb_x + kb_y * kb_y) <
                     p_ftCommonData->x3E8_shieldKnockbackFrameDecay)
+#endif
                 {
                     /// @bug IN THE MELEE CODE THAT CAUSES THE INVISIBLE
                     /// CEILING GLITCH The next line should be 'pAtkShieldKB->y
@@ -2252,12 +2327,24 @@ void Fighter_procUpdate(Fighter_GObj* gobj)
                     // p_stc_ftcommon->x3e8_shield_kb_frameDecay)/atkShieldKB_len
                     // float atkShieldKBAngle = atan2_80022C30(pAtkShieldKB->y,
                     // pAtkShieldKB->x);
+#ifdef PORT
+                    // PORT: one fnmsubs each on the console
+                    // (Fighter_procUpdate+0x308 and +0x324), like the
+                    // knockback decay above.
+                    pAtkShieldKB->x = -__builtin_fmaf(
+                        p_ftCommonData->x3E8_shieldKnockbackFrameDecay,
+                        cosf(atkShieldKBAngle), -pAtkShieldKB->x);
+                    pAtkShieldKB->y = -__builtin_fmaf(
+                        p_ftCommonData->x3E8_shieldKnockbackFrameDecay,
+                        sinf(atkShieldKBAngle), -pAtkShieldKB->y);
+#else
                     pAtkShieldKB->x -=
                         p_ftCommonData->x3E8_shieldKnockbackFrameDecay *
                         cosf(atkShieldKBAngle);
                     pAtkShieldKB->y -=
                         p_ftCommonData->x3E8_shieldKnockbackFrameDecay *
                         sinf(atkShieldKBAngle);
+#endif
                 }
                 fp->xF4_ground_attacker_shield_kb_vel = 0;
             } else {
@@ -2311,10 +2398,20 @@ void Fighter_procUpdate(Fighter_GObj* gobj)
             float C1 = 1.0f;
             float C2 = C1 - (float) fp->dmg.x194C / (float) fp->dmg.x1948;
 
+#ifdef PORT
+            // PORT: one fmadds each on the console (Fighter_procUpdate+0x450
+            // and +0x464): the difference is rounded alone and C2 times it
+            // fused onto xA4.
+            selfVel.x = __builtin_fmaf(C2, fp->self_vel.x - fp->xA4_unk_vel.x,
+                                       fp->xA4_unk_vel.x);
+            selfVel.y = __builtin_fmaf(C2, fp->self_vel.y - fp->xA4_unk_vel.y,
+                                       fp->xA4_unk_vel.y);
+#else
             selfVel.x =
                 C2 * (fp->self_vel.x - fp->xA4_unk_vel.x) + fp->xA4_unk_vel.x;
             selfVel.y =
                 C2 * (fp->self_vel.y - fp->xA4_unk_vel.y) + fp->xA4_unk_vel.y;
+#endif
 
             fp->dmg.x194C--;
             if (fp->dmg.x194C == 0) {
@@ -2487,6 +2584,11 @@ void Fighter_procMap(Fighter_GObj* gobj)
 
         fp->x2223_b5 = 0;
 
+#ifdef PORT
+        // PORT: Slippi's recorder clears its L-cancel status here
+        // (Fighter_procMap+0xA8).
+        port_hook_fighter_map_begin(fp);
+#endif
         HSD_JObjSetTranslate(gobj->hsd_obj, &fp->cur_pos);
 
         if (fp->coll_cb) {
@@ -2598,7 +2700,11 @@ void Fighter_procGrabColl(Fighter_GObj* gobj)
                 if (!fp->x2225_b1) {
                     ft_PlaySFX(fp, fp->ft_data->x4C_sfx->x30, 0x7F, 0x40);
                 }
+#if defined(PORT) || defined(LINT)
+                ftColl_80078754(gobj, fp->victim_gobj, NULL);
+#else
                 ftColl_80078754(gobj, fp->victim_gobj, 0);
+#endif
                 fp->grab_cb(gobj);
                 fp->grabbed_cb(fp->victim_gobj, gobj);
                 return;
@@ -2825,6 +2931,19 @@ void Fighter_procCollResolve(Fighter_GObj* gobj)
         }
 
         if (fp->x221A_b7) {
+#ifdef PORT
+            // PORT: two fmadds on the console, at
+            // Fighter_procCollResolve+0xC0 (the light-shield blend) and +0xE0
+            // (x284 * damage + x288).
+            fp->shield_health -= __builtin_fmaf(
+                p_ftCommonData->x284,
+                (fp->x19A0_shieldDamageTaken) *
+                    (1.0f -
+                     __builtin_fmaf(fp->lightshield_amount,
+                                    p_ftCommonData->x2E0 - p_ftCommonData->x2DC,
+                                    p_ftCommonData->x2DC)),
+                p_ftCommonData->x288);
+#else
             fp->shield_health -=
                 (p_ftCommonData->x284 *
                  ((fp->x19A0_shieldDamageTaken) *
@@ -2832,6 +2951,7 @@ void Fighter_procCollResolve(Fighter_GObj* gobj)
                             (p_ftCommonData->x2E0 - p_ftCommonData->x2DC)) +
                            p_ftCommonData->x2DC)))) +
                 p_ftCommonData->x288;
+#endif
             if (fp->shield_health < 0.0f) {
                 bool3 = 1;
                 fp->shield_health = p_ftCommonData->x280_unkShieldHealth;
@@ -3007,8 +3127,16 @@ void Fighter_procCollResolve(Fighter_GObj* gobj)
         }
 
         if (fp->dmg.x1928) {
+#ifdef PORT
+            // PORT: one fmadds on the console (Fighter_procCollResolve+0x6EC).
+            // Rounded twice, the attacker's shield pushback is an ULP off and
+            // the slide carries it into the attacker's position.
+            float eval = __builtin_fmaf(fp->dmg.x1928, p_ftCommonData->x3E0,
+                                        p_ftCommonData->x3E4);
+#else
             float eval =
                 (fp->dmg.x1928 * p_ftCommonData->x3E0) + p_ftCommonData->x3E4;
+#endif
             fp->xF4_ground_attacker_shield_kb_vel =
                 (fp->dmg.x192c < 0.0f) ? eval : -eval;
             ftCommon_8007E2A4(gobj);
@@ -3068,6 +3196,11 @@ void Fighter_procCamera(Fighter_GObj* gobj)
             fp->cam_cb(gobj);
         }
     }
+#ifdef PORT
+    // PORT: Slippi's recorder takes its post-frame snapshot here, asleep or
+    // not (Fighter_procCamera+0x48).
+    port_hook_fighter_camera_done(fp);
+#endif
 }
 
 void Fighter_procPlayer(Fighter_GObj* gobj)

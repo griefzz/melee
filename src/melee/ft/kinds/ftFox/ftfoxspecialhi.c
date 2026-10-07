@@ -280,6 +280,21 @@ void ftFx_SpecialAirHi_Phys(HSD_GObj* gobj)
     fp->mv.fx.SpecialHi.unk++;
 
     if (fp->mv.fx.SpecialHi.unk >= da->x70_FOX_FIREFOX_DURATION_END) {
+#ifdef PORT
+        // PORT: each is one fnmsubs on the console
+        // (ftFx_SpecialAirHi_Phys+0x70 and +0x88). Rounded twice, a Fire
+        // Fox's or Fire Bird's deceleration lands an ULP from the console's;
+        // see docs/design/build.md, "Rounding and division".
+        fp->self_vel.x =
+            -__builtin_fmaf(fp->facing_dir,
+                            da->x78_FOX_FIREFOX_REVERSE_ACCEL *
+                                cosf(fp->mv.fx.SpecialHi.rotateModel),
+                            -fp->self_vel.x);
+        fp->self_vel.y =
+            -__builtin_fmaf(da->x78_FOX_FIREFOX_REVERSE_ACCEL,
+                            sinf(fp->mv.fx.SpecialHi.rotateModel),
+                            -fp->self_vel.y);
+#else
         fp->self_vel.x =
             -((fp->facing_dir * (da->x78_FOX_FIREFOX_REVERSE_ACCEL *
                                  cosf(fp->mv.fx.SpecialHi.rotateModel))) -
@@ -287,6 +302,7 @@ void ftFx_SpecialAirHi_Phys(HSD_GObj* gobj)
         fp->self_vel.y = -((da->x78_FOX_FIREFOX_REVERSE_ACCEL *
                             sinf(fp->mv.fx.SpecialHi.rotateModel)) -
                            fp->self_vel.y);
+#endif
     }
 }
 

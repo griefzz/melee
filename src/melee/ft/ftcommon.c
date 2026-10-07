@@ -657,7 +657,14 @@ void ftCommon_8007DA24(Fighter* fp)
 
 float ftCommon_CalcHitlag(int dmg, FtMotionId msid, float mul)
 {
+#ifdef PORT
+    // PORT: fmadds on the console (ftCommon_CalcHitlag+0x34). The sum is
+    // truncated to whole frames, so its last bit can be a frame; see
+    // docs/design/build.md, "Rounding and division".
+    int tmp = __builtin_fmaf(dmg, p_ftCommonData->x198, p_ftCommonData->x19C);
+#else
     int tmp = dmg * p_ftCommonData->x198 + p_ftCommonData->x19C;
+#endif
     float result = (int) (tmp * mul);
     if ((unsigned) msid - ftCo_MS_Squat <= 1) {
         result = (int) (result * p_ftCommonData->x1A0);
@@ -979,9 +986,17 @@ void ftCommon_8007E3EC(HSD_GObj* gobj)
         sp10.x -= fp->x1A7C.x;
         sp10.y -= fp->x1A7C.y;
         sp10.z -= fp->x1A7C.z;
+#ifdef PORT
+        // PORT: three fmadds on the console (ftCommon_8007E3EC+0xDC, +0xF0
+        // and +0x104).
+        fp->x1A7C.x = __builtin_fmaf(sp10.x, fp->x1A6C, fp->x1A7C.x);
+        fp->x1A7C.y = __builtin_fmaf(sp10.y, fp->x1A6C, fp->x1A7C.y);
+        fp->x1A7C.z = __builtin_fmaf(sp10.z, fp->x1A6C, fp->x1A7C.z);
+#else
         fp->x1A7C.x += sp10.x * fp->x1A6C;
         fp->x1A7C.y += sp10.y * fp->x1A6C;
         fp->x1A7C.z += sp10.z * fp->x1A6C;
+#endif
         HSD_JObjSetTranslate(jobj, &fp->x1A7C);
     }
 }
@@ -1212,7 +1227,12 @@ void ftCommon_8007ED2C(Fighter* fp)
 
 void ftCommon_8007ED50(Fighter* fp, s32 arg1)
 {
+#ifdef PORT
+    // PORT: fmadds on the console (ftCommon_8007ED50+0x40).
+    float tmp = __builtin_fmaf(arg1, p_ftCommonData->x138, p_ftCommonData->x13C);
+#else
     float tmp = arg1 * p_ftCommonData->x138 + p_ftCommonData->x13C;
+#endif
     s32 val2 = tmp;
     if ((s32) tmp < 1) {
         return;
@@ -1222,7 +1242,12 @@ void ftCommon_8007ED50(Fighter* fp, s32 arg1)
 
 void ftCommon_8007EE0C(Fighter* fp, s32 arg1)
 {
+#ifdef PORT
+    // PORT: fmadds on the console (ftCommon_8007EE0C+0x40).
+    float tmp = __builtin_fmaf(arg1, p_ftCommonData->xEC, p_ftCommonData->xF0);
+#else
     float tmp = arg1 * p_ftCommonData->xEC + p_ftCommonData->xF0;
+#endif
     s32 val2 = tmp;
     if ((s32) tmp < 1) {
         return;
@@ -1620,8 +1645,15 @@ void ftCommon_8007FDA0(HSD_GObj* gobj)
 
     fp = gobj->user_data;
     temp_r30 = &fp->co_attrs.x130;
+#ifdef PORT
+    // PORT: fmadds on the console (ftCommon_8007FDA0+0x50).
+    phi_f31 = my_fminf(__builtin_fmaf(p_ftCommonData->x710, fp->x2024,
+                                      p_ftCommonData->x708),
+                       p_ftCommonData->x70C);
+#else
     phi_f31 = my_fminf(p_ftCommonData->x710 * fp->x2024 + p_ftCommonData->x708,
                        p_ftCommonData->x70C);
+#endif
     temp_f1 = 1.0f / phi_f31;
     sp20 = *temp_r30;
     sp20.x *= temp_f1;
@@ -1709,8 +1741,15 @@ void ftCommon_80080174(Fighter* fp)
     }
     if (fp->x1980 != NULL) {
         v = &fp->co_attrs.x130;
+#ifdef PORT
+        // PORT: fmadds on the console (ftCommon_80080174+0x70).
+        if ((phi_f2 = __builtin_fmaf(p_ftCommonData->x710, fp->x2024,
+                                     p_ftCommonData->x708)) >
+            (phi_f3 = p_ftCommonData->x70C))
+#else
         if ((phi_f2 = p_ftCommonData->x710 * fp->x2024 +
                       p_ftCommonData->x708) > (phi_f3 = p_ftCommonData->x70C))
+#endif
         {
             phi_f2 = phi_f3;
         }

@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "ftCo_Damage.h"
 
 #include <Runtime/platform.h>
@@ -500,12 +503,26 @@ bool ftCo_Damage_CheckAirMotion(Fighter* fp)
 void ftCo_Damage_OnEveryHitlag(Fighter_GObj* gobj)
 {
     Fighter* fp = GET_FIGHTER(gobj);
+#ifdef PORT
+    // PORT: --ucf. UCF 0.84's SDI is injected at this function's +0x5C,
+    // after the tilt-timer test fails, and accepts the input a frame later
+    // when the stick left the dead zone this frame and the raw stick moved
+    // like a smash. Inert unless --ucf (port/mods/slippi/ucf.c).
+    if (fp->allow_sdi &&
+        VEC2_SQ_LEN(fp->input.lstick[0]) >=
+            SQ(p_ftCommonData->sdi_min_stick_mag) &&
+        (fp->active_timer.lstick.x < p_ftCommonData->sdi_stick_window ||
+         fp->active_timer.lstick.y < p_ftCommonData->sdi_stick_window ||
+         port_hook_fighter_sdi_input(fp)))
+    {
+#else
     if (fp->allow_sdi &&
         VEC2_SQ_LEN(fp->input.lstick[0]) >=
             SQ(p_ftCommonData->sdi_min_stick_mag) &&
         (fp->active_timer.lstick.x < p_ftCommonData->sdi_stick_window ||
          fp->active_timer.lstick.y < p_ftCommonData->sdi_stick_window))
     {
+#endif
         float scaled_lstick_x =
             fp->input.lstick[0].x * p_ftCommonData->sdi_pos_scale;
         float scaled_lstick_y =
@@ -525,10 +542,26 @@ void ftCo_8008E5A4(Fighter* fp)
         float kb_x = fp->x8c_kb_vel.x;
         float kb_y = fp->x8c_kb_vel.y;
         float kb_vel_x_neg = -kb_x;
+#ifdef PORT
+        // PORT: the console fuses four of this function's multiply-adds
+        // (fmadds at +0x58, +0x80, +0xBC and +0x128), and the arms below
+        // fuse the same four; see docs/design/build.md, "Rounding and
+        // division". +0x58: the y*y product rounded alone, neg*neg fused on.
+        float kb_mag =
+            __builtin_fmaf(kb_vel_x_neg, kb_vel_x_neg, kb_y * kb_y);
+#else
         float kb_mag = kb_vel_x_neg * kb_vel_x_neg + kb_y * kb_y;
+#endif
         if (!(kb_mag < 0.00001f)) {
+#ifdef PORT
+            // PORT: +0x80, fmadds: neg * lstick.y rounded alone,
+            // kb_y * lstick.x fused on.
+            float f3 = __builtin_fmaf(kb_y, fp->input.lstick[0].x,
+                                      kb_vel_x_neg * fp->input.lstick[0].y);
+#else
             float f3 = kb_y * fp->input.lstick[0].x +
                        kb_vel_x_neg * fp->input.lstick[0].y;
+#endif
             float f30 = f3 * f3 / kb_mag;
             Vec3 lstick_vec3, kb_vel_cross_lstick;
             lstick_vec3.x = fp->input.lstick[0].x;
@@ -542,9 +575,20 @@ void ftCo_8008E5A4(Fighter* fp)
             {
                 float angle = atan2f(kb_y, kb_x);
                 float scale;
+#ifdef PORT
+                // PORT: +0xBC, fmadds: y*y rounded alone, x*x fused on.
+                kb_mag = sqrtf(__builtin_fmaf(kb_x, kb_x, kb_y * kb_y));
+#else
                 kb_mag = sqrtf(kb_x * kb_x + kb_y * kb_y);
+#endif
                 scale = MTXDegToRad(p_ftCommonData->x1A8);
+#ifdef PORT
+                // PORT: +0x128, fmadds. This one decides the last bit of the
+                // DI angle.
+                angle = __builtin_fmaf(scale, f30, angle);
+#else
                 angle += scale * f30;
+#endif
                 fp->x8c_kb_vel.x = kb_mag * cosf(angle);
                 fp->x8c_kb_vel.y = kb_mag * sinf(angle);
             }
@@ -588,8 +632,17 @@ void ftCo_Damage_OnExitHitlag(Fighter_GObj* gobj)
         float kb_y = fp->x8c_kb_vel.y;
         if (kb_x || kb_y) {
             float kb_angle = atan2f(kb_y, kb_x);
+#ifdef PORT
+            // PORT: fmadds at ftCo_Damage_OnExitHitlag+0x14C, y*y rounded
+            // alone and x*x fused on; docs/design/build.md, "Rounding and
+            // division".
+            float scaled_kb_mag =
+                sqrtf(__builtin_fmaf(kb_x, kb_x, kb_y * kb_y)) *
+                p_ftCommonData->x1AC;
+#else
             float scaled_kb_mag =
                 sqrtf(kb_x * kb_x + kb_y * kb_y) * p_ftCommonData->x1AC;
+#endif
             fp->x8c_kb_vel.x = scaled_kb_mag * cosf(kb_angle);
             fp->x8c_kb_vel.y = scaled_kb_mag * sinf(kb_angle);
         }
@@ -678,12 +731,23 @@ static inline void inlineB2(Fighter_GObj* gobj)
 {
     Fighter* fp = gobj->user_data;
     ftCo_800C8D00(gobj);
+#ifdef PORT
+    // PORT: Slippi's PreventWobbling (Wobble Check) is injected at
+    // ftCo_8008EC90+0x400, the load of motion_id below. When it breaks the
+    // grab it branches past the two CaptureDamage entries to 0x8008F0C8, the
+    // ftCo_8008DA4C call. The asm has no online test, so the hook runs
+    // whenever the Slippi mod is on (port/mods/slippi/slippi_mod.c).
+    if (!port_hook_fighter_grabbed_hit_breaks_grab(gobj)) {
+#endif
     if (fp->motion_id == 0xe0 || fp->motion_id == 0xe1) {
         ftCo_800DC284(gobj);
     }
     if (fp->motion_id == 0xe3 || fp->motion_id == 0xe4) {
         ftCo_800DC3A4(gobj);
     }
+#ifdef PORT
+    }
+#endif
     if (ftCo_8008DA4C(
             gobj, fp->dmg.x1860_element,
             ftCo_8008D8E8(fp->dmg.kb_applied * p_ftCommonData->x154)))

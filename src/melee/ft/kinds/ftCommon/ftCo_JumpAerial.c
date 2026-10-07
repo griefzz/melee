@@ -28,6 +28,9 @@
 #include <melee/ft/kinds/ftPeach/ftpeachfloat.h>
 #include <melee/ft/types.h>
 #include <sysdolphin/baselib/jobj.h>
+#ifdef PORT
+#include <port/hooks.h> // tap jump off; port/game/tap_jump.c
+#endif
 
 /* 0CC3C4 */ static void ftYs_JumpAerial_Anim_Cb(Fighter_GObj* gobj);
 /* 0CC654 */ static void ftNs_JumpAerial_Phys_Cb(Fighter_GObj* gobj);
@@ -36,7 +39,25 @@ void ft_800CB6EC(Fighter* fp, s32 arg1)
 {
     if (fp->mv.co.jumpaerial.x0 != 0) {
         fp->mv.co.jumpaerial.x0 -= 1;
+#ifdef PORT
+        // PORT: MWCC inlines HSD_JObjAddRotationY() with the argument's
+        // expression in place, so `rotate.y + -(0.01745329252f * q)` is one
+        // fnmsubs (ftYs_JumpAerial_Enter+0x1B0), rounded once. Through
+        // clang's inliner the product and the add round separately; see
+        // docs/design/build.md, "Rounding and division".
+        {
+            HSD_JObj* jobj = fp->parts->joint;
+
+            HSD_ASSERT(1041, jobj);
+            jobj->rotate.y =
+                __builtin_fmaf(-0.01745329252f, 180.0F / arg1, jobj->rotate.y);
+            if (!(jobj->flags & JOBJ_MTX_INDEP_SRT)) {
+                HSD_JObjSetMtxDirty(jobj);
+            }
+        }
+#else
         HSD_JObjAddRotationY(fp->parts->joint, -MTXDegToRad(180.0F / arg1));
+#endif
         if (fp->mv.co.jumpaerial.x0 == (arg1 / 2)) {
             fp->facing_dir = -fp->facing_dir;
         }
@@ -45,11 +66,22 @@ void ft_800CB6EC(Fighter* fp, s32 arg1)
 
 bool ft_did_jump(Fighter* fp, bool arg1)
 {
+#ifdef PORT
+    // PORT: the air jump, which a player with tap jump off does not get
+    // from the stick (port/game/tap_jump.c).
+    if (fp->x1968_jumpsUsed < fp->co_attrs.max_jumps &&
+        ((fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold &&
+          fp->active_timer.lstick.y < p_ftCommonData->tap_jump_window &&
+          !port_hook_fighter_tap_jump_suppressed(fp)) ||
+         fp->input.pressed_buttons & HSD_PAD_XY) &&
+        !(arg1 && (fp->x68A < p_ftCommonData->x1C)))
+#else
     if (fp->x1968_jumpsUsed < fp->co_attrs.max_jumps &&
         ((fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold &&
           fp->active_timer.lstick.y < p_ftCommonData->tap_jump_window) ||
          fp->input.pressed_buttons & HSD_PAD_XY) &&
         !(arg1 && (fp->x68A < p_ftCommonData->x1C)))
+#endif
     {
         return true;
     }

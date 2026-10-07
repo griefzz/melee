@@ -1,4 +1,7 @@
 #include "ft_0D31.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include "fighter.h"
 #include "ft_0877.h"
@@ -508,9 +511,15 @@ void ftCo_800D4580(Fighter_GObj* gobj, int arg1)
     fp->mv.co.unk_deadup.x40 = datattrs->x524;
     fp->mv.co.unk_deadup.x44 = 0;
     fp->mv.co.unk_deadup.x50 = datattrs->x538;
+#if defined(PORT) || defined(LINT)
+    fp->mv.co.unk_deadup.x5C.z = 0.0f;
+    fp->mv.co.unk_deadup.x5C.y = 0.0f;
+    fp->mv.co.unk_deadup.x5C.x = 0.0f;
+#else
     fp->mv.co.common.x24 = 0.0f;
     fp->mv.co.common.x20 = 0.0f;
     fp->mv.co.common.x1C = 0.0f;
+#endif
 
     Fighter_ChangeMotionState(gobj, arg1, Ft_MF_None, 0.0f, 1.0f, 0.0f, NULL);
     fp->x2220_b7 = true;
@@ -643,8 +652,28 @@ void ftCo_DeadUpFall_Anim(Fighter_GObj* gobj)
             fp->mv.co.unk_deadup.x44 = 2;
             return;
         case 2:
+#ifdef PORT
+            // PORT: Slippi's
+            // Online/Core/FreezeDeadUpFallPhysics/InitHitVelocity.asm, at
+            // ftCo_DeadUpFall_Anim+0x214. The star-KO fall gets a private
+            // velocity and the fighter's own is zeroed, so nothing that
+            // perturbs `self_vel` (screen shake, or the camera write-back in
+            // ftdrawcommon.c) reaches the physics position, which Nana reads
+            // from Popo.
+            if (port_hook_deadup_fall_frozen()) {
+                fp->mv.co.unk_deadup.x48 = data->x550;
+                fp->mv.co.unk_deadup.x4C = data->x55C;
+                fp->self_vel.x = 0.0f;
+                fp->self_vel.y = 0.0f;
+                fp->self_vel.z = 0.0f;
+            } else {
+                fp->self_vel.y = data->x550;
+                fp->self_vel.z = data->x55C;
+            }
+#else
             fp->self_vel.y = data->x550;
             fp->self_vel.z = data->x55C;
+#endif
             fp->mv.co.unk_deadup.x40 = data->x530;
             fp->mv.co.unk_deadup.x44 = 3;
             return;
@@ -687,8 +716,31 @@ void ftCo_DeadUpFall_Phys(Fighter_GObj* gobj)
                       fp->mv.co.unk_deadup.x4C);
         break;
     case 3:
+#ifdef PORT
+        // PORT: Slippi's
+        // Online/Core/FreezeDeadUpFallPhysics/UpdateFallVelocity.asm, at
+        // ftCo_DeadUpFall_Phys+0x80, replaces the two calls below: the
+        // gravity clamp ftCommon_Fall() runs, applied to the private velocity
+        // and accumulated into x5C directly. x5C.x is left alone, as it is
+        // without the code once self_vel is zero.
+        if (port_hook_deadup_fall_frozen()) {
+            f32 gravity = ca->x554;
+            f32 terminal = ca->x558;
+            f32 vy = fp->mv.co.unk_deadup.x48 - gravity;
+            if (vy < -terminal) {
+                vy = -terminal;
+            }
+            fp->mv.co.unk_deadup.x48 = vy;
+            fp->mv.co.unk_deadup.x5C.y += vy;
+            fp->mv.co.unk_deadup.x5C.z += fp->mv.co.unk_deadup.x4C;
+        } else {
+            ftCommon_Fall(fp, ca->x554, ca->x558);
+            lbVector_Add(&fp->mv.co.unk_deadup.x5C, &fp->self_vel);
+        }
+#else
         ftCommon_Fall(fp, ca->x554, ca->x558);
         lbVector_Add(&fp->mv.co.unk_deadup.x5C, &fp->self_vel);
+#endif
         if (fp->x2222_b6) {
             if (!ftAnim_80070FD0(fp)) {
                 break;

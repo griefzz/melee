@@ -27,9 +27,17 @@ float ftCo_800DA824(Fighter* fp)
     handicap = Player_GetHandicap(fp->player_idx);
     temp = (f32) handicap;
     temp = co->x35C - temp;
+#ifdef PORT
+    // PORT: both are fmadds on the console; docs/design/build.md, "Rounding
+    // and division".
+    temp = __builtin_fmaf(co->x358, temp, co->x354);
+    temp += value;
+    return __builtin_fmaf(fp->dmg.x1830_percent, co->x368, temp);
+#else
     temp = co->x358 * temp + co->x354;
     temp += value;
     return fp->dmg.x1830_percent * co->x368 + temp;
+#endif
 }
 
 void fn_800DA8E4(Fighter_GObj* gobj, Fighter_GObj* victim_gobj, s32 arg2)
@@ -51,9 +59,21 @@ void fn_800DA8E4(Fighter_GObj* gobj, Fighter_GObj* victim_gobj, s32 arg2)
     v = (*cd2) * (cd->x364 - ((f32) (Player_80033BB8(fp->player_idx) + 1)));
     {
         f32 s3 = (cd->x35C - (f32) Player_GetHandicap(fp->player_idx));
+#ifdef PORT
+        // PORT: fmadds on the console, as is the grab time below;
+        // docs/design/build.md, "Rounding and division".
+        s3 = __builtin_fmaf(cd->x358, s3, cd->x354);
+#else
         s3 = cd->x358 * s3 + cd->x354;
+#endif
         s3 = s3 + v;
+#ifdef PORT
+        // PORT: fmadds on the console (fn_800DA8E4+0xF0).
+        ftCommon_InitGrab(fp, 0,
+                          __builtin_fmaf(fp->dmg.x1830_percent, cd->x368, s3));
+#else
         ftCommon_InitGrab(fp, 0, (fp->dmg.x1830_percent * cd->x368) + s3);
+#endif
     }
     fp->mv.ca.specials.grav = 0.0f;
     fp->mv._[0xC] = 0;
@@ -356,8 +376,16 @@ void ftCo_800DB464(Fighter_GObj* gobj)
     Vec3 pos;
     lb_8000B1CC(fp->parts[ftParts_GetBoneIndex(fp, FtPart_XRotN)].joint, NULL,
                 &pos);
+#ifdef PORT
+    // PORT: both are fmadds on the console; docs/design/build.md, "Rounding
+    // and division".
+    pos.x = __builtin_fmaf(fp->facing_dir, fp->x1A70.z * fp->x34_scale.y,
+                           pos.x);
+    pos.y = __builtin_fmaf(fp->x1A70.y, fp->x34_scale.y, pos.y);
+#else
     pos.x = (fp->facing_dir * (fp->x1A70.z * fp->x34_scale.y)) + pos.x;
     pos.y += fp->x1A70.y * fp->x34_scale.y;
+#endif
     pos.z = 0.0f;
     fp->cur_pos = pos;
 }

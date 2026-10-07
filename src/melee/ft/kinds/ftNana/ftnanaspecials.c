@@ -1,4 +1,7 @@
 #include <Runtime/platform.h>
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <melee/ft/forward.h>
 
@@ -61,6 +64,13 @@ bool ftNn_Init_80123954(Fighter_GObj* nana_gobj, GroundOrAir pp_ga)
         case 11:
         case 12:
         case 13:
+#ifdef PORT
+            // PORT: Slippi's External/FreezeGlitchFix/FreezeGlitchFix.asm
+            // (`04 801239A8 <- nop`) drops exactly this store
+            // (`stw r0, 0x1A5C(r31)`); leaving the field alone fixes the
+            // freeze glitch.
+            if (!port_hook_nana_freeze_fix())
+#endif
             nana_fp->x1A5C = NULL;
             ret = true;
             break;

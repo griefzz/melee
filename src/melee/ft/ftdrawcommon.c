@@ -1,4 +1,7 @@
 #include "ftdrawcommon.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <Runtime/platform.h>
 
@@ -370,6 +373,22 @@ static inline void ftDrawCommon_80080E18_inline2(HSD_GObj* gobj, Fighter* old)
     Vec3* pos;
 
     MtxPtr matrix = HSD_CObjGetInvViewingMtxPtr(Camera_800310B8());
+#ifdef PORT
+    // PORT: Slippi's Online/Core/FreezeDeadUpFallPhysics/UpdateModelPos.asm,
+    // at ftDrawCommon_80080E18+0x68. This is a draw callback, and the line
+    // below writes `fp->cur_pos`, the fighter's physics position, from the
+    // camera's inverse viewing matrix, so anything that moves the camera
+    // moves the simulation. Slippi writes only the model translation. The
+    // port's frame structure differs from the console's, which makes the
+    // unmodified behaviour worse here than on hardware.
+    if (port_hook_deadup_fall_frozen()) {
+        Vec3 model_pos;
+        PSMTXMultVec(matrix, (Vec3*) &old->mv.co.walk.fast_anim_frame,
+                     &model_pos);
+        HSD_JObjSetTranslate(jobj, &model_pos);
+        return;
+    }
+#endif
     /// @todo this seems to be using the wrong common attributes
     PSMTXMultVec(matrix, (Vec3*) &old->mv.co.walk.fast_anim_frame,
                  &fp->cur_pos);

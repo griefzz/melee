@@ -46,6 +46,18 @@ static HSD_TevDesc ftMaterial_803C69D0 = {
 static HSD_TECnst ftMaterial_803C6A44 = {
     HSD_TE_CNST, NULL, NULL, HSD_TE_RGB, HSD_TE_U8, 0xFF, 0xFF, 0, 0,
 };
+#ifdef PORT
+// PORT: the console's linker laid ftMObj (0x50 bytes), ftMaterial_803C69D0
+// and ftMaterial_803C6A44 end to end, exactly sizeof(struct ft_MObjInfo), and
+// ftMaterial_800BF534() and ftMaterial_800BF6BC() read all three through one
+// `(struct ft_MObjInfo*) &ftMObj`. Here they are separate objects, and a
+// garbage `texp_tmpl` makes HSD_TExpSetReg() (baselib/texp.c) assert on the
+// first colour overlay. This is the one object, filled from the two statics
+// so their initialisers stay the single copy; `parent` is unused, and ftMObj
+// keeps its own storage because other files take its address. See
+// docs/design/verification.md, "Statics laid end to end".
+static struct ft_MObjInfo ftMObj_region;
+#endif
 
 void ftMaterial_800BF260(void)
 {
@@ -53,6 +65,12 @@ void ftMaterial_800BF260(void)
                      "sysdolphin_base_library", "ft_mobj",
                      sizeof(HSD_MObjInfo), sizeof(HSD_MObj));
     ftMObj.setup = (HSD_MObjSetupFunc) (Event) ftMaterial_800BF2B8;
+#ifdef PORT
+    // PORT: filled before any draw can reach the templates, in the class
+    // init that publishes ftMaterial_800BF2B8 as the setup function above.
+    ftMObj_region.tevdesc_tmpl = ftMaterial_803C69D0;
+    ftMObj_region.texp_tmpl = ftMaterial_803C6A44;
+#endif
 }
 
 void ftMaterial_800BF2B8(HSD_MObj* mobj, u32 rendermode, u32 unused)
@@ -159,7 +177,13 @@ HSD_TExp* ftMaterial_800BF534(Fighter* fp, HSD_MObj* mobj, HSD_TExp* texp,
     HSD_TevDesc sp_tevdesc;
     s32 reg;
     bool chk;
+#ifdef PORT
+    // PORT: the one object; see ftMObj_region. The cast below reads past
+    // the end of a 0x50-byte static here.
+    struct ft_MObjInfo* info = &ftMObj_region;
+#else
     struct ft_MObjInfo* info = (struct ft_MObjInfo*) &ftMObj;
+#endif
     ColorOverlay* overlay = ftCo_800C0658(fp);
 
     if (overlay->x7C_flag2 && overlay->x7C_light_enable) {
@@ -213,7 +237,13 @@ void ftMaterial_800BF6BC(Fighter* fp, HSD_MObj* mobj, HSD_TExp* texp)
     s32 var_r3;
     ColorOverlay* overlay;
     s32 var_r5;
+#ifdef PORT
+    // PORT: the one object; see ftMObj_region. The cast below reads past
+    // the end of a 0x50-byte static here.
+    struct ft_MObjInfo* info = &ftMObj_region;
+#else
     struct ft_MObjInfo* info = (struct ft_MObjInfo*) &ftMObj;
+#endif
 
     if (!fp->x2223_b3) {
         overlay = ftCo_800C0658(fp);

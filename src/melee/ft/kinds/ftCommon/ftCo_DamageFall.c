@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "ftCo_DamageFall.h"
 
 #include <Runtime/platform.h>
@@ -121,12 +124,26 @@ void ftCo_DamageFall_IASA(HSD_GObj* gobj)
         RETURN_IF(ftCo_AttackAir_CheckItemThrowInput(gobj));
         RETURN_IF(ftCo_800D705C(gobj));
         RETURN_IF(ftCo_800CB870(gobj));
+#ifdef PORT
+        // PORT: --ucf. UCF 0.84's tumble is injected at this function's
+        // +0xCC, after the wiggle-out test fails, and accepts it on the
+        // second frame of the stick input when the raw stick moved like a
+        // smash. Inert unless --ucf (port/mods/slippi/ucf.c).
+        if (ABS(fp->input.lstick[0].x) >= p_ftCommonData->x210 &&
+            (fp->active_timer.lstick.x < p_ftCommonData->x214 ||
+             port_hook_fighter_tumble_wiggle_input(fp)))
+        {
+            ftCo_Fall_Enter(gobj);
+            return;
+        }
+#else
         if (ABS(fp->input.lstick[0].x) >= p_ftCommonData->x210 &&
             fp->active_timer.lstick.x < p_ftCommonData->x214)
         {
             ftCo_Fall_Enter(gobj);
             return;
         }
+#endif
     }
     RETURN_IF(ftCo_800C5DDC(gobj));
     RETURN_IF(ftCo_800C5CD4(gobj));

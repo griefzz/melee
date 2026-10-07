@@ -29,6 +29,9 @@
 #include <melee/ft/ftcommon.h>
 #include <melee/ft/kinds/ftKirby/ftkirby.h>
 #include <melee/ft/types.h>
+#ifdef PORT
+#include <port/hooks.h> // tap jump off; port/game/tap_jump.c
+#endif
 
 bool ftCo_800C1D38(Fighter_GObj* gobj)
 {
@@ -52,8 +55,17 @@ bool ftCo_800C1D38(Fighter_GObj* gobj)
 
 bool ftCo_800C1E0C(Fighter* fp)
 {
+#ifdef PORT
+    // PORT: the wall tech's jump, which a player with tap jump off does not
+    // get from the stick (port/game/tap_jump.c); X or Y pressed in the last
+    // x250 frames (x67E counts them) still jumps.
+    if (fp->x67E < p_ftCommonData->x250 ||
+        (fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold &&
+         !port_hook_fighter_tap_jump_suppressed(fp)))
+#else
     if (fp->x67E < p_ftCommonData->x250 ||
         fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold)
+#endif
     {
         return true;
     }

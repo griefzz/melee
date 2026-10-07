@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "ftCo_Escape.h"
 
 #include <Runtime/platform.h>
@@ -209,6 +212,16 @@ bool ftCo_80099794(Fighter_GObj* gobj)
 {
     Fighter* fp = gobj->user_data;
     if (fp->input.held_buttons[0] & HSD_PAD_LR && inlineB0(fp)) {
+#ifdef PORT
+        // PORT: --ucf. UCF 0.84's shield drop is one injection at
+        // ftCo_80099894+0x10 that returns to "li r3, 0" in whichever of the
+        // two callers it came from, so the caller reports the input check as
+        // failed and the game goes on to the shield drop. This is that, per
+        // caller (port/mods/slippi/ucf.c).
+        if (port_hook_fighter_spot_dodge_suppressed(fp)) {
+            return false;
+        }
+#endif
         ftCo_80099894(gobj);
         return true;
     }
@@ -219,6 +232,12 @@ bool ftCo_8009980C(Fighter_GObj* gobj)
 {
     Fighter* fp = gobj->user_data;
     if (inlineB0(fp) || ftCo_800DF8E8(fp)) {
+#ifdef PORT
+        // PORT: --ucf; the second of the two callers. See above.
+        if (port_hook_fighter_spot_dodge_suppressed(fp)) {
+            return false;
+        }
+#endif
         ftCo_80099894(gobj);
         return true;
     }

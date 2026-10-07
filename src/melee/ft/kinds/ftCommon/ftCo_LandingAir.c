@@ -10,6 +10,9 @@
 #include <melee/ft/ftanim.h>
 #include <melee/ft/ftcommon.h>
 #include <melee/ft/types.h>
+#ifdef PORT
+#include <port/hooks.h> // the L-cancel result; docs/design/mods.md
+#endif
 
 void ftCo_LandingAir_EnterWithLag(Fighter_GObj* gobj)
 {
@@ -40,6 +43,14 @@ void ftCo_LandingAir_EnterWithLag(Fighter_GObj* gobj)
             lag = fp->co_attrs.landingairlw_lag;
             break;
         }
+#ifdef PORT
+        // PORT: Slippi's recorder reads the L-cancel result from this
+        // comparison (ftCo_LandingAir_EnterWithLag+0x9C).
+        if (msid != ftCo_MS_None) {
+            port_hook_fighter_lcancel_checked(fp,
+                                              fp->x67F < p_ftCommonData->xE4);
+        }
+#endif
         if (msid != ftCo_MS_None && fp->x67F < p_ftCommonData->xE4) {
             float div_lag = lag / p_ftCommonData->xE8;
             int int_lag = div_lag;

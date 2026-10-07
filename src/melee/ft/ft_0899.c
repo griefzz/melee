@@ -186,8 +186,20 @@ void ft_80089B08(Fighter_GObj* gobj)
                 guess = 0.5 * guess * (3.0 - guess * guess * line_len);
                 guess = 0.5 * guess * (3.0 - guess * guess * line_len);
                 guess = 0.5 * guess * (3.0 - guess * guess * line_len);
+#ifdef PORT
+                // PORT: the word below sp1C is line_len_sqrt, which MWCC put
+                // at r1+0x18 under sp1C at r1+0x1C; this stfs/lfs pair
+                // (0x8008A078) is its only access. Clang lays the locals out
+                // differently, so the console's spelling writes into
+                // whatever is there. Named, it is the same store and reload
+                // and the same rounding to single; see
+                // docs/design/verification.md, "Stack slots below an array".
+                line_len_sqrt = (f32) ((f64) line_len * guess);
+                line_len = line_len_sqrt;
+#else
                 ((volatile f32*) &sp1C)[-1] = (f32) ((f64) line_len * guess);
                 line_len = ((volatile f32*) &sp1C)[-1];
+#endif
             }
             if (line_len < 5.0f) {
                 adj_angle = 0.0f;

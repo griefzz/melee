@@ -1,4 +1,7 @@
 #include "ftmarsspecialn.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <Runtime/platform.h>
 
@@ -259,11 +262,24 @@ static inline void inlineA0(Fighter_GObj* gobj, HSD_GObjEvent cb)
         i = 0;
         while (i < (signed) ARRAY_SIZE(fp->x914)) {
             if (fp->x914[i].state == HitCapsule_Enabled) {
+#ifdef PORT
+                // PORT: x4 and x8 are signed ints from the fighter's file,
+                // and the console's __cvt_fp2unsigned makes a negative sum 0;
+                // see docs/design/verification.md, "Floats converted to
+                // unsigned".
+                ftColl_8007ABD0(
+                    &fp->x914[i],
+                    port_cvt_fp2unsigned(
+                        (float) (da->x4 +
+                                 fp->mv.ms.specialn.cur_frame / 30 * da->x8)),
+                    gobj);
+#else
                 ftColl_8007ABD0(
                     &fp->x914[i],
                     (float) (da->x4 +
                              fp->mv.ms.specialn.cur_frame / 30 * da->x8),
                     gobj);
+#endif
             }
             i++;
         }

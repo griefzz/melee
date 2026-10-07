@@ -1,4 +1,7 @@
 #include "ftnessattackhi4.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <melee/ft/forward.h>
 #include <melee/ft/kinds/ftCommon/forward.h>
@@ -85,7 +88,16 @@ static void ftNs_AttackHi4_YoyoApplyDamage(float charge_frames, HSD_GObj* gobj)
             final_damage =
                 fp->x914->damage * (damage_mul * charge_duration2 + 1.0f);
 
+#ifdef PORT
+            // PORT: the yo-yo's multiplier and duration are floats from the
+            // file, and the console's __cvt_fp2unsigned makes a negative
+            // damage 0; see docs/design/verification.md, "Floats converted
+            // to unsigned".
+            ftColl_8007ABD0(&fp->x914[0], port_cvt_fp2unsigned(final_damage),
+                            gobj);
+#else
             ftColl_8007ABD0(&fp->x914[0], final_damage, gobj);
+#endif
         }
     }
 }

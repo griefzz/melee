@@ -142,16 +142,31 @@ void ftCo_ItemScopeRapid_IASA(Fighter_GObj* gobj)
 {
     Fighter* fp = GET_FIGHTER(gobj);
     if (fp->input.pressed_buttons & HSD_PAD_A) {
+#ifdef PORT
+        // PORT: fp+0x2340 is `mv` and gobj+0x2C is `user_data`, both at
+        // other offsets here. fn_800D7BDC() and fn_800D7C60() in this file
+        // write the same assignment by name.
+        fp->mv.co.common.x0 = (int) p_ftCommonData->x5BC;
+#else
         *(s32*) ((u8*) fp + 0x2340) = *(s32*) ((u8*) p_ftCommonData + 0x5BC);
+#endif
     }
 }
 
 void ftCo_ItemScopeAirRapid_IASA(Fighter_GObj* gobj)
 {
+#ifdef PORT
+    Fighter* fp = GET_FIGHTER(gobj);
+#else
     Fighter* fp = *(Fighter**) ((u8*) gobj + 0x2C);
+#endif
 
     if (fp->input.pressed_buttons & HSD_PAD_A) {
+#ifdef PORT
+        fp->mv.co.common.x0 = (int) p_ftCommonData->x5BC;
+#else
         *(s32*) ((u8*) fp + 0x2340) = *(s32*) ((u8*) p_ftCommonData + 0x5BC);
+#endif
     }
 }
 

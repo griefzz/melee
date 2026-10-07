@@ -52,8 +52,16 @@ void ftCo_800DE508(Fighter_GObj* gobj)
 
     lb_8000B1CC(fp->parts[ftParts_GetBoneIndex(fp, FtPart_XRotN)].joint, NULL,
                 &pos);
+#ifdef PORT
+    // PORT: both are fmadds on the console; docs/design/build.md, "Rounding
+    // and division".
+    pos.x = __builtin_fmaf(fp->facing_dir, fp->x1A70.z * fp->x34_scale.y,
+                           pos.x);
+    pos.y = __builtin_fmaf(fp->x1A70.y, fp->x34_scale.y, pos.y);
+#else
     pos.x = (fp->facing_dir * (fp->x1A70.z * fp->x34_scale.y)) + pos.x;
     pos.y += fp->x1A70.y * fp->x34_scale.y;
+#endif
     pos.z = 0.0f;
     fp->cur_pos = pos;
 }

@@ -1,4 +1,7 @@
 #include "ftCo_ThrownKirby.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <Runtime/platform.h>
 
@@ -139,7 +142,14 @@ void ftCo_800BDB58(Fighter_GObj* gobj, Fighter_GObj* thrower_gobj)
              ftKb_SpecialN_800F58AC, ftKb_SpecialN_800F5A88, false);
 
     /// @todo Possibly another callback in #inlineB2
+#ifdef PORT
+    // PORT: the star's damage is a float from the fighter's file, and the
+    // console's __cvt_fp2unsigned makes a negative one 0; see
+    // docs/design/verification.md, "Floats converted to unsigned".
+    ftColl_8007ABD0(fp->x914, port_cvt_fp2unsigned(inlineB1(gobj)), gobj);
+#else
     ftColl_8007ABD0(fp->x914, inlineB1(gobj), gobj);
+#endif
 
     ftKb_SpecialN_800F5820(thrower_gobj, &fp->mv.co.thrownkirby.coll_box,
                            scale.x);
@@ -157,7 +167,11 @@ static inline void inlineA0(Fighter_GObj* gobj)
         fp->self_vel.x =
             (fp->self_vel.x * (vel_mag - fp->mv.co.thrownkirby.x4)) / vel_mag;
         fp->self_vel.y =
+#if defined(PORT) || defined(LINT)
+            (fp->self_vel.y * (vel_mag - fp->mv.co.thrownkirby.x4)) / vel_mag;
+#else
             (fp->self_vel.y * (vel_mag - fp->mv.ca.specialhi.vel.x)) / vel_mag;
+#endif
         if (fp->self_vel.y < 0) {
             fp->facing_dir = -1;
         } else {
@@ -264,8 +278,13 @@ void ftCo_800BE494(Fighter_GObj* gobj)
         Vec2 self_vel;
         ftKb_SpecialN_800F5874(&self_vel);
         fp->self_vel.y = self_vel.y;
+#if defined(PORT) || defined(LINT)
+        if (fp->mv.co.thrownkirby.x8) {
+            fp->self_vel.x = fp->mv.co.thrownkirby.x8 * self_vel.x;
+#else
         if (fp->mv.ca.specialhi.vel.y) {
             fp->self_vel.x = fp->mv.ca.specialhi.vel.y * self_vel.x;
+#endif
         } else {
             fp->self_vel.x = self_vel.x * (fp->self_vel.x < 0 ? -1 : +1);
         }

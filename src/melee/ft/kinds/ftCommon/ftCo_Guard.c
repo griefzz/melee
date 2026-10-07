@@ -1,3 +1,6 @@
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 #include "ftCo_Guard.h"
 
 #include <math.h>
@@ -55,6 +58,21 @@
 /* 09388C */ static void ftCo_8009388C(Fighter_GObj* gobj);
 /* 0939B4 */ static void ftCo_800939B4(Fighter_GObj* gobj);
 /* 093A50 */ static void ftCo_80093A50(Fighter_GObj* gobj);
+
+#ifdef PORT
+// PORT: MWCC contracted twenty-one multiply-adds in this file into fmadds:
+// the shield's size (inlineB0, two in each of six functions that inline it),
+// the light-shield blend in the shield-stun slide and its duration
+// (ftCo_80092F2C(), ftCo_80092ED8()), the shield's health drain
+// (ftCo_800925A4()), the shield tilt's smoothing (ftCo_80091BC4()) and shield
+// SDI's position nudge (ftCo_80093240(), ftCo_800932DC()). GUARD_MADD fuses
+// them in the port and is the plain expression on the console; rounded
+// twice, the slide's starting speed carries an ULP into the defender's
+// position. See docs/design/build.md, "Rounding and division".
+#define GUARD_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#else
+#define GUARD_MADD(a, b, c) ((a) * (b) + (c))
+#endif
 
 bool ftCo_80091A2C(Fighter_GObj* gobj)
 {
@@ -153,7 +171,11 @@ void ftCo_80091BC4(Fighter* fp)
         deg_delta += 360;
     }
 
+#if defined(PORT) || defined(LINT)
+    smoothed_deg = GUARD_MADD(deg_delta, p_ftCommonData->x44C, guard_deg);
+#else
     smoothed_deg = deg_delta * p_ftCommonData->x44C + guard_deg;
+#endif
     if (smoothed_deg > 360) {
         guard_deg = smoothed_deg;
         guard_deg -= 360;
@@ -170,8 +192,14 @@ void ftCo_80091BC4(Fighter* fp)
     if (stick_mag > 1) {
         stick_mag = 1;
     }
+#if defined(PORT) || defined(LINT)
+    fp->mv.co.guard.x4 =
+        GUARD_MADD(p_ftCommonData->x44C, stick_mag - fp->mv.co.guard.x4,
+                   fp->mv.co.guard.x4);
+#else
     fp->mv.co.guard.x4 +=
         p_ftCommonData->x44C * (stick_mag - fp->mv.co.guard.x4);
+#endif
 }
 
 static inline float inlineB0(Fighter* fp)
@@ -181,11 +209,11 @@ static inline float inlineB0(Fighter* fp)
     } else {
         float n1 =
             (fp->shield_health / p_ftCommonData->x260_startShieldHealth) *
-            (fp->lightshield_amount *
-                 (p_ftCommonData->x2D8 - p_ftCommonData->x2D4) +
-             p_ftCommonData->x2D4);
+            GUARD_MADD(fp->lightshield_amount,
+                       p_ftCommonData->x2D8 - p_ftCommonData->x2D4,
+                       p_ftCommonData->x2D4);
         float n2 = 1 - p_ftCommonData->x264;
-        float n3 = n2 * n1 + p_ftCommonData->x264;
+        float n3 = GUARD_MADD(n2, n1, p_ftCommonData->x264);
         return n3 * fp->co_attrs.initial_shield_size;
     }
 }
@@ -414,10 +442,26 @@ bool ftCo_800925A4(HSD_GObj* gobj)
                        p_ftCommonData->analog_shoulder_deadzone) /
                           (1 - p_ftCommonData->analog_shoulder_deadzone);
         }
-        fp->shield_health -= p_ftCommonData->x278 *
-                             ((fp->lightshield_amount *
-                               (p_ftCommonData->x2F0 - p_ftCommonData->x2EC)) +
-                              p_ftCommonData->x2EC);
+#ifdef PORT
+        {
+            // PORT: the console subtracts this product unfused
+            // (ftCo_800925A4+0x80 is the only fused op), and a contracting
+            // build would fuse the `-=`. A statement of its own stays two
+            // roundings either way.
+            float drain = p_ftCommonData->x278 *
+                          GUARD_MADD(fp->lightshield_amount,
+                                     p_ftCommonData->x2F0 -
+                                         p_ftCommonData->x2EC,
+                                     p_ftCommonData->x2EC);
+            fp->shield_health -= drain;
+        }
+#else
+        fp->shield_health -=
+            p_ftCommonData->x278 *
+            GUARD_MADD(fp->lightshield_amount,
+                       p_ftCommonData->x2F0 - p_ftCommonData->x2EC,
+                       p_ftCommonData->x2EC);
+#endif
         if (fp->shield_health < 0) {
             fp->shield_health = 0;
             fp->x221A_b7 = false;
@@ -652,11 +696,12 @@ void ftCo_80092E50(Fighter_GObj* gobj)
 
 float ftCo_80092ED8(int arg0, float arg1)
 {
-    return p_ftCommonData->x28C *
-               (arg0 *
-                (1 - (arg1 * (p_ftCommonData->x2E8 - p_ftCommonData->x2E4) +
-                      p_ftCommonData->x2E4))) +
-           p_ftCommonData->x290;
+    return GUARD_MADD(
+        p_ftCommonData->x28C,
+        arg0 * (1 - GUARD_MADD(arg1,
+                               p_ftCommonData->x2E8 - p_ftCommonData->x2E4,
+                               p_ftCommonData->x2E4)),
+        p_ftCommonData->x290);
 }
 
 void ftCo_80092F2C(HSD_GObj* gobj, bool arg1)
@@ -677,12 +722,14 @@ void ftCo_80092F2C(HSD_GObj* gobj, bool arg1)
         fp->x2219_b0 = true;
     }
     {
-        float f = (p_ftCommonData->x28C *
-                   (fp->x19A4 *
-                    (1.0f - ((fp->lightshield_amount *
-                              (p_ftCommonData->x2E8 - p_ftCommonData->x2E4)) +
-                             p_ftCommonData->x2E4)))) +
-                  p_ftCommonData->x290;
+        float f = GUARD_MADD(
+            p_ftCommonData->x28C,
+            fp->x19A4 *
+                (1.0f -
+                 GUARD_MADD(fp->lightshield_amount,
+                            p_ftCommonData->x2E8 - p_ftCommonData->x2E4,
+                            p_ftCommonData->x2E4)),
+            p_ftCommonData->x290);
         ftAnim_SetAnimRate(gobj,
                            (0.1f + lbGetJObjEndFrame(GET_JOBJ(gobj))) / f);
         if (!arg1) {
@@ -718,15 +765,35 @@ void ftCo_80093240(Fighter_GObj* gobj)
 {
     Fighter* fp = gobj->user_data;
     if (fp->allow_sdi && fp->ground_or_air == GA_Ground) {
+#ifdef PORT
+        // PORT: --ucf. UCF 0.84's shield SDI is injected at this function's
+        // +0x54, after the tilt-timer test fails; the same idea as
+        // ftCo_Damage_OnEveryHitlag()'s, along X only. Inert unless --ucf
+        // (port/mods/slippi/ucf.c).
+        if ((fp->input.lstick[0].x < 0 ? -fp->input.lstick[0].x
+                                       : fp->input.lstick[0].x) >=
+                p_ftCommonData->sdi_min_stick_mag &&
+            (fp->active_timer.lstick.x < p_ftCommonData->sdi_stick_window ||
+             port_hook_fighter_shield_sdi_input(fp)))
+        {
+#else
         if ((fp->input.lstick[0].x < 0 ? -fp->input.lstick[0].x
                                        : fp->input.lstick[0].x) >=
                 p_ftCommonData->sdi_min_stick_mag &&
             fp->active_timer.lstick.x < p_ftCommonData->sdi_stick_window)
         {
+#endif
             float scl = p_ftCommonData->x4C0 * (fp->input.lstick[0].x *
                                                 p_ftCommonData->sdi_pos_scale);
+#if defined(PORT) || defined(LINT)
+            fp->cur_pos.x =
+                GUARD_MADD(fp->coll_data.floor.normal.y, scl, fp->cur_pos.x);
+            fp->cur_pos.y =
+                GUARD_MADD(-fp->coll_data.floor.normal.x, scl, fp->cur_pos.y);
+#else
             fp->cur_pos.x += fp->coll_data.floor.normal.y * scl;
             fp->cur_pos.y += -fp->coll_data.floor.normal.x * scl;
+#endif
             fp->active_timer.lstick.x = 254;
         }
     }
@@ -742,8 +809,15 @@ void ftCo_800932DC(Fighter_GObj* gobj)
         {
             float scl = p_ftCommonData->x4C0 *
                         (fp->input.lstick[0].x * p_ftCommonData->x4BC);
+#if defined(PORT) || defined(LINT)
+            fp->cur_pos.x =
+                GUARD_MADD(fp->coll_data.floor.normal.y, scl, fp->cur_pos.x);
+            fp->cur_pos.y =
+                GUARD_MADD(-fp->coll_data.floor.normal.x, scl, fp->cur_pos.y);
+#else
             fp->cur_pos.x += fp->coll_data.floor.normal.y * scl;
             fp->cur_pos.y += -fp->coll_data.floor.normal.x * scl;
+#endif
 
             /// @todo Fake.
             !gobj;

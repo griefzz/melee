@@ -5617,6 +5617,18 @@ void ftCo_800AC5A0(Fighter* fp)
     s8 stick_x;
     s8 stick_y;
 
+#ifdef PORT
+    // PORT: Slippi's Common/NanaDeterminism/NanaDeterminism.asm, at
+    // ftCo_800AC5A0+0x18, zeroes these two locals (`li r5, 0; li r30, 0`).
+    // As the @bug below says, both reach ftCo_800B46B8 uninitialised when
+    // kb_mag is nearly zero: on the console they hold whatever r5 and r30
+    // held, which differs between code lists, and here whatever clang left.
+    // No console value exists to reproduce, so they are zeroed always: it is
+    // what ftCo_CpuSetNeutralStick sends in the else branch, and the only
+    // answer two builds can agree on.
+    stick_x = 0;
+    stick_y = 0;
+#endif
     data = &fp->cpu;
     if (!fp->x221A_b3) {
         data->x18 = data->x1C;
@@ -6044,6 +6056,12 @@ static inline struct CpuFighter* ftCo_800ADE48_inline1(Fighter* fp)
     return &fp->cpu;
 }
 
+#ifdef PORT
+// PORT: what ftCo_800ADE48's hitlag branch reads as `switch_cmd`. On the
+// console that is the caller's r31, non-zero at 36 of its 37 call sites; the
+// one where it is zero, ftCo_800B21C8(), clears this around its call.
+static bool ftCo_800ADE48_caller_r31 = true;
+#endif
 static bool ftCo_800ADE48(Fighter* fp)
 {
     s32 switch_cmd;
@@ -6176,6 +6194,12 @@ static bool ftCo_800ADE48(Fighter* fp)
         } else if (!fp->x221A_b3) {
             switch_cmd = 0;
         } else {
+#ifdef PORT
+            // PORT: HAL's code never writes switch_cmd here. MWCC keeps it in
+            // r31, so the console enters 0x12 (hitlag DI); clang treats the
+            // read as undefined and drops it.
+            switch_cmd = ftCo_800ADE48_caller_r31;
+#endif
             data2->xF9_b0 = false;
             if (0.1f * data2->level > HSD_Randf()) {
                 data2->xFA_b1 = true;
@@ -7852,7 +7876,15 @@ void ftCo_800B21C8(Fighter* fp)
         }
         ftCo_800A75DC(fp, attack_target);
     }
+#ifdef PORT
+    // PORT: r31 is 0 at this call on the console (the constant the xF9
+    // stores use).
+    ftCo_800ADE48_caller_r31 = false;
     ftCo_800ADE48(fp);
+    ftCo_800ADE48_caller_r31 = true;
+#else
+    ftCo_800ADE48(fp);
+#endif
 }
 
 void ftCo_800B24B8(Fighter* fp)

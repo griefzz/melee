@@ -570,6 +570,14 @@ float ftAnim_8006F3DC(Fighter_GObj* fighter_gobj)
     } else {
         return lbGetJObjCurrFrame(fp->x8AC_animSkeleton);
     }
+#ifdef PORT
+    // PORT: the decomp has no `return` here. With blend frames at 0 and no
+    // part passing the flag test (or a matching part whose joint has no
+    // AObj), control falls off the end and the console returns whatever is
+    // in f1. Both callers store the result in fp->cur_anim_frame, so return
+    // the value that does not advance it.
+    return 0.0f;
+#endif
 }
 
 float ftAnim_8006F484(Fighter_GObj* fighter_gobj)
@@ -800,6 +808,12 @@ HSD_Joint* ftAnim_8006F994(Fighter* fp, HSD_JObj* jobj, HSD_Joint* joint)
         i += 1;
         ftAnim_GetNextJointInTree(&joint, &depth);
     }
+#ifdef PORT
+    // PORT: the decomp has no `return` here. The loop only ends with
+    // joint == NULL, and both callers drive a `while (joint != NULL)` walk
+    // with the result.
+    return joint;
+#endif
 }
 
 void ftAnim_8006FA58(Fighter* fp, Fighter_Part part, HSD_Joint* joint)

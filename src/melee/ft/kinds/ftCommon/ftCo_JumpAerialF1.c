@@ -9,6 +9,9 @@
 #include <melee/ft/ft_0D27.h>
 #include <melee/ft/ftcommon.h>
 #include <melee/ft/inlines.h>
+#ifdef PORT
+#include <port/hooks.h> // tap jump off; port/game/tap_jump.c
+#endif
 
 static inline struct Fighter_x2D0_t* ftCo_800D74A4_inline(Fighter* fp)
 {
@@ -61,8 +64,17 @@ bool ftCo_800D730C(Fighter_GObj* gobj, bool arg1)
             r29 = 0;
         }
         r4 = 1;
+#ifdef PORT
+        // PORT: a multi-jumper's next jump while up is held, which a player
+        // with tap jump off does not get from the stick
+        // (port/game/tap_jump.c); X or Y held (0xC00) still chains them.
+        if (!(fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold &&
+              !port_hook_fighter_tap_jump_suppressed(fp)) &&
+            !(fp->input.held_buttons[0] & 0xC00))
+#else
         if (!(fp->input.lstick[0].y >= p_ftCommonData->tap_jump_threshold) &&
             !(fp->input.held_buttons[0] & 0xC00))
+#endif
         {
             r4 = 0;
         }

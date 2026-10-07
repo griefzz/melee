@@ -74,8 +74,21 @@ void ftYs_SpecialS_8012DF8C(Fighter_GObj* gobj, Vec3* arg1)
         } else {
             angle = M_PI - da->specialhi_base_angle - mag;
         }
+#ifdef PORT
+        // PORT: fmadds on the console (ftYs_SpecialS_8012DF8C+0x114 and
+        // +0x14C): the speed is fused before the cos and sin scale it, and
+        // every egg Yoshi throws carries the rounding into its flight. See
+        // docs/design/build.md, "Rounding and division".
+        arg1->x = __builtin_fmaf((float) fp->mv.ys.specialhi.x4, da->x100,
+                                 da->xFC) *
+                  cosf(angle);
+        arg1->y = __builtin_fmaf((float) fp->mv.ys.specialhi.x4, da->x100,
+                                 da->xFC) *
+                  sinf(angle);
+#else
         arg1->x = (fp->mv.ys.specialhi.x4 * da->x100 + da->xFC) * cosf(angle);
         arg1->y = (fp->mv.ys.specialhi.x4 * da->x100 + da->xFC) * sinf(angle);
+#endif
         arg1->z = 0.0f;
     }
 }
@@ -111,8 +124,14 @@ void fn_8012E110(Fighter_GObj* gobj)
         ftYs_SpecialS_8012DF8C_outline(gobj, &sp18);
         {
             float x4 = fp->mv.ys.specialhi.x4;
+#ifdef PORT
+            // PORT: fmadds on the console (fn_8012E110+0x12C).
+            it_802B28C8(fp->u.ys.x2238, &sp18, &sp24,
+                        __builtin_fmaf(x4, da->x110, da->x10C), x4);
+#else
             it_802B28C8(fp->u.ys.x2238, &sp18, &sp24, x4 * da->x110 + da->x10C,
                         x4);
+#endif
         }
         fp->u.ys.x2238 = NULL;
         fp->take_dmg_cb = NULL;

@@ -18,6 +18,20 @@
 
 static float inlineA0(Fighter* fp, bool arg1)
 {
+#ifdef PORT
+    // PORT: the slot term is added unfused on the console (MWCC makes the
+    // calls first and holds that product in a register) while the other two
+    // products are fused; ftCo_800C0D0C() (ftCo_Bury.c) says where. Its own
+    // statement keeps it a separate rounding when the build contracts.
+    float slot_term =
+        p_ftCommonData->x630 *
+        (p_ftCommonData->x634 - ((Player_80033BB8(fp->player_idx)) + 1));
+    float result =
+        (fp->dmg.x1830_percent * p_ftCommonData->x638) +
+        ((p_ftCommonData->x628 *
+          (p_ftCommonData->x62C - Player_GetHandicap(fp->player_idx))) +
+         p_ftCommonData->x624 + slot_term);
+#else
     float result =
         (fp->dmg.x1830_percent * p_ftCommonData->x638) +
         ((p_ftCommonData->x628 *
@@ -25,6 +39,7 @@ static float inlineA0(Fighter* fp, bool arg1)
          p_ftCommonData->x624 +
          p_ftCommonData->x630 *
              (p_ftCommonData->x634 - ((Player_80033BB8(fp->player_idx)) + 1)));
+#endif
     if (arg1) {
         result *= p_ftCommonData->x644;
     }

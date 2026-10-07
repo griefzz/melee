@@ -364,9 +364,14 @@ void ftCo_ThrowB_Phys(Fighter_GObj* gobj)
     Fighter* fp = GET_FIGHTER(gobj);
     if (fp->ground_or_air == GA_Air) {
         if (fp->mv.co.fighterthrow.x4 != 0) {
+#if defined(PORT) || defined(LINT)
+            fp->self_vel.x = fp->mv.co.throw_.xC.z * fp->facing_dir;
+            fp->self_vel.y = fp->mv.co.throw_.xC.y;
+#else
             fp->self_vel.x =
                 fp->mv.co.fighterthrow.self_vel_x * fp->facing_dir;
             fp->self_vel.y = fp->mv.co.fighterthrow.self_vel_y;
+#endif
         } else {
             ft_80085134(gobj);
         }
@@ -410,9 +415,14 @@ void ftCo_ThrowHi_Phys(Fighter_GObj* gobj)
     Fighter* fp = GET_FIGHTER(gobj);
     if (fp->ground_or_air == GA_Air) {
         if (fp->mv.co.fighterthrow.x4 != 0) {
+#if defined(PORT) || defined(LINT)
+            fp->self_vel.x = fp->mv.co.throw_.xC.z * fp->facing_dir;
+            fp->self_vel.y = fp->mv.co.throw_.xC.y;
+#else
             fp->self_vel.x =
                 fp->mv.co.fighterthrow.self_vel_x * fp->facing_dir;
             fp->self_vel.y = fp->mv.co.fighterthrow.self_vel_y;
+#endif
         } else {
             ft_80085134(gobj);
         }
@@ -466,9 +476,14 @@ void ftCo_ThrowLw_Phys(Fighter_GObj* gobj)
     Fighter* fp = GET_FIGHTER(gobj);
     if (fp->ground_or_air == GA_Air) {
         if (fp->mv.co.fighterthrow.x4 != 0) {
+#if defined(PORT) || defined(LINT)
+            fp->self_vel.x = fp->mv.co.throw_.xC.z * fp->facing_dir;
+            fp->self_vel.y = fp->mv.co.throw_.xC.y;
+#else
             fp->self_vel.x =
                 fp->mv.co.fighterthrow.self_vel_x * fp->facing_dir;
             fp->self_vel.y = fp->mv.co.fighterthrow.self_vel_y;
+#endif
         } else {
             ft_80085134(gobj);
         }
@@ -559,8 +574,16 @@ void ftCo_800DDDE4(Fighter_GObj* gobj, Fighter_GObj* gobj2, bool arg)
         fp4->x2226_b2 = 0;
         HSD_JObjSetTranslate(jobj2, &fp4->x2174);
         if (arg) {
+#ifdef PORT
+            // PORT: both are fmadds on the console; docs/design/build.md,
+            // "Rounding and division".
+            vec.x = __builtin_fmaf(fp4->facing_dir,
+                                   fp4->x1A70.z * fp4->x34_scale.y, vec.x);
+            vec.y = __builtin_fmaf(fp4->x1A70.y, fp4->x34_scale.y, vec.y);
+#else
             vec.x += fp4->facing_dir * (fp4->x1A70.z * fp4->x34_scale.y);
             vec.y += fp4->x1A70.y * fp4->x34_scale.y;
+#endif
             vec.z = 0.0f;
         }
         cd = &fp4->coll_data;

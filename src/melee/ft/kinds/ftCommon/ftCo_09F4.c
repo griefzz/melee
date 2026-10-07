@@ -16,6 +16,9 @@
 #include <sysdolphin/baselib/gobjproc.h>
 #include <sysdolphin/baselib/jobj.h>
 #include <sysdolphin/baselib/lobj.h>
+#ifdef PORT
+#include <sysdolphin/baselib/wobj.h> // the light descriptor below
+#endif
 
 /* 09F480 */ static void ftCo_8009F480(Fighter_GObj* gobj);
 /* 09F54C */ static void ftCo_8009F54C(HSD_GObj* gobj, intptr_t code);
@@ -23,12 +26,27 @@
 static HSD_LObj* lobj0;
 static HSD_LObj* lobj1;
 
+#ifdef PORT
+// PORT: `floats` is an HSD_WObjDesc written out as five words (class_name,
+// the light's position, robjdesc), the same twenty bytes on PowerPC. Here
+// the two pointers are eight bytes each, so WObjLoad() would read the
+// position as (0.57, 0.57, 0) and robjdesc from past the end of the array.
+// This writes it as the struct it is, as Ground_803E066C (gr/ground.c) does;
+// it is byte-identical on the console, so a candidate for upstream.
+static HSD_WObjDesc floats = { NULL, { 0.57f, 0.57f, 0.57f }, NULL };
+
+static HSD_LightDesc node0 = {
+    NULL,    NULL, 0x0005, 0x0000, { 0xFF, 0xFF, 0xFF, 0xFF },
+    &floats, 0,    0,
+};
+#else
 static float floats[] = { 0, 0.57, 0.57, 0.57, 0 };
 
 static HSD_LightDesc node0 = {
     NULL,           NULL, 0x0005, 0x0000, { 0xFF, 0xFF, 0xFF, 0xFF },
     (void*) floats, 0,    0,
 };
+#endif
 
 static LightList node1 = { &node0, NULL };
 

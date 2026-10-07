@@ -81,8 +81,16 @@ void ft_80085030(Fighter_GObj* gobj, float gr_friction, float facing_dir)
 {
     Fighter* fp = gobj->user_data;
     if (fp->x594.x0.x594_b0) {
+#ifdef PORT
+        // PORT: fmsubs on the console (ft_80085030+0x2C); every grounded
+        // move that moves by its animation rounds this once. See
+        // docs/design/build.md, "Rounding and division".
+        fp->xE4_ground_accel_1 = __builtin_fmaf(fp->x6A4_transNOffset.z,
+                                                facing_dir, -fp->gr_vel);
+#else
         fp->xE4_ground_accel_1 =
             fp->x6A4_transNOffset.z * facing_dir - fp->gr_vel;
+#endif
     } else {
         ftCommon_CalcGroundAccel_Deaccel(fp, gr_friction);
     }
@@ -132,8 +140,16 @@ void ft_80085154(Fighter_GObj* gobj)
     f32 lstick_y = sinf(fp->lstick_angle);
     f32 temp_f0 = fp->x6A4_transNOffset.y;
     f32 temp_f3 = fp->x6A4_transNOffset.z * fp->facing_dir;
+#ifdef PORT
+    // PORT: the first product of each is fused on the console (fmsubs and
+    // fmadds at ft_80085154+0x6C and +0x70) and the second rounded alone.
+    // This is root motion turned by the stick, Dolphin Slash for one.
+    fp->self_vel.x = __builtin_fmaf(temp_f3, lstick_x, -(temp_f0 * lstick_y));
+    fp->self_vel.y = __builtin_fmaf(temp_f3, lstick_y, temp_f0 * lstick_x);
+#else
     fp->self_vel.x = (temp_f3 * lstick_x) - (temp_f0 * lstick_y);
     fp->self_vel.y = (temp_f3 * lstick_y) + (temp_f0 * lstick_x);
+#endif
 }
 
 void ft_800851C0(Fighter_GObj* gobj)

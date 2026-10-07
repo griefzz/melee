@@ -38,6 +38,35 @@ struct ftKb_Init_803CB4EC_t {
     Vec3 vec;
 };
 
+#ifdef PORT
+// PORT: seven sites read the stone's vector as
+// `((struct ftKb_Init_803CB490_layout*) ftKb_Init_803CB490)->vec`, which is
+// ftKb_Init_803CB4EC.vec only because the console's linker placed the two
+// end to end (0x5C of bools, six ints, then the vector at +0x74). This makes
+// them one object and the two names its parts; it holds ints and floats
+// only, so the layout is the same on both targets. See
+// docs/design/verification.md, "Statics laid end to end".
+static struct {
+    bool flags[23];
+    struct ftKb_Init_803CB4EC_t tail;
+} port_ftKb_stone = {
+    {
+        false, true,  false, false, false, false, true,  true,
+        false, false, false, true,  true,  true,  false, false,
+        true,  true,  true,  true,  false, true,  true,
+    },
+    {
+        { 0, 2, 3, 4, 5, 6 },
+        { 0.0F, 1.0F, 0.0F },
+    },
+};
+_Static_assert(offsetof(struct ftKb_Init_803CB490_layout, vec) ==
+                   sizeof(port_ftKb_stone.flags) +
+                       offsetof(struct ftKb_Init_803CB4EC_t, vec),
+               "the stone's vector must be where the layout reads it");
+#define ftKb_Init_803CB490 (port_ftKb_stone.flags)
+#define ftKb_Init_803CB4EC (port_ftKb_stone.tail)
+#else
 bool ftKb_Init_803CB490[] = {
     false, true,  false, false, false, false, true,  true,
     false, false, false, true,  true,  true,  false, false,
@@ -48,6 +77,7 @@ struct ftKb_Init_803CB4EC_t ftKb_Init_803CB4EC = {
     { 0, 2, 3, 4, 5, 6 },
     { 0.0F, 1.0F, 0.0F },
 };
+#endif
 
 static inline bool fbKb_SpecialLw_IASA_Inline(Fighter_GObj* gobj)
 {
@@ -331,7 +361,11 @@ void ftKb_SpecialHi_800F3B28(Fighter_GObj* gobj)
         var_f4 = 0.0f;
         var_f5 =
             (1.0f + (1.0f - temp_f1)) *
+#if defined(PORT) || defined(LINT)
+            (fp->mv.kb.speciallw.x54[0].x * dat_attr->speciallw_slide_acceleration);
+#else
             (fp->mv.co.common.x4C.z * dat_attr->speciallw_slide_acceleration);
+#endif
     }
     fp->xE4_ground_accel_1 = fp->mv.kb.speciallw.x88[8] * (var_f5 + var_f4);
     fp->gr_vel *= fp->mv.kb.speciallw.x88[8];
@@ -352,10 +386,18 @@ void ftKb_SpecialHi_800F3B28(Fighter_GObj* gobj)
             dat_attr->speciallw_slide_max_speed - fp->gr_vel;
     }
     fp->x74_self_accel.x = fp->mv.co.common.x58.x * fp->xE4_ground_accel_1;
+#if defined(PORT) || defined(LINT)
+    fp->x74_self_accel.y = -fp->mv.kb.speciallw.x54[0].x * fp->xE4_ground_accel_1;
+#else
     fp->x74_self_accel.y = -fp->mv.co.common.x4C.z * fp->xE4_ground_accel_1;
+#endif
     fp->x74_self_accel.z = 0.0f;
     fp->self_vel.x = fp->mv.co.common.x58.x * fp->gr_vel;
+#if defined(PORT) || defined(LINT)
+    fp->self_vel.y = -fp->mv.kb.speciallw.x54[0].x * fp->gr_vel;
+#else
     fp->self_vel.y = -fp->mv.co.common.x4C.z * fp->gr_vel;
+#endif
     fp->self_vel.z = 0.0f;
 }
 
@@ -703,7 +745,11 @@ static inline void ftKb_SpecialLw_SetStoneVecs(Fighter_GObj* gobj, Fighter* fp,
         angle = -angle;
     }
     if (angle >= da->speciallw_min_slant_angle_slide) {
+#if defined(PORT) || defined(LINT)
+        fp->gr_vel = fp->mv.kb.speciallw.x18.x * da->speciallw_slide_max_speed;
+#else
         fp->gr_vel = fp->mv.co.common.x18 * da->speciallw_slide_max_speed;
+#endif
     }
 }
 

@@ -26,7 +26,11 @@ void ftKp_SpecialHi_Enter(Fighter_GObj* gobj)
     Fighter_ClearCmdVars(fp);
     fp->self_vel.y = 0.0f;
     fp->x1968_jumpsUsed = fp->co_attrs.max_jumps;
+#if defined(PORT) || defined(LINT)
+    fp->mv.co.walk.middle_anim_frame = 0.0f;
+#else
     fp->mv.co.capturekoopa.xC = 0.0f;
+#endif
     fp->mv.kp.specials.x10 = 0;
     efSync_Spawn(0x4DA, gobj, fp->parts->joint);
     fp->x2219_b0 = true;
@@ -45,7 +49,11 @@ void ftKp_SpecialAirHi_Enter(Fighter_GObj* gobj)
     ftCommon_ClampGroundVel(fp, da->x60);
     fp->self_vel.y = da->x54;
     fp->x1968_jumpsUsed = fp->co_attrs.max_jumps;
+#if defined(PORT) || defined(LINT)
+    fp->mv.co.walk.middle_anim_frame = 0.0f;
+#else
     fp->mv.co.capturekoopa.xC = 0.0f;
+#endif
     fp->mv.kp.specials.x10 = 0;
     efSync_Spawn(0x4DA, gobj, fp->parts->joint);
     fp->x2219_b0 = true;

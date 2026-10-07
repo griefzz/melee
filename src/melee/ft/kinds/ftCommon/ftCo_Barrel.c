@@ -44,7 +44,11 @@ void ftCo_Barrel_Enter(Fighter_GObj* gobj, Item_GObj* item_gobj)
     fp->invisible = true;
     ftCommon_8007E2F4(fp, 0x1FF);
     ftCommon_8007EFC0(fp, 1U);
+#if defined(PORT) || defined(LINT)
+    ftColl_800787B4(fp->mv.co.barrel.x8, gobj, NULL);
+#else
     ftColl_800787B4(fp->mv.co.barrel.x8, gobj, 0);
+#endif
 }
 
 void ftCo_Barrel_Take_Dmg_Cb(Fighter_GObj* gobj)
@@ -119,7 +123,11 @@ void ftCo_800C92E4(Fighter_GObj* gobj, Vec3* arg1, Vec3* arg2,
     mpColl_80043680(&fp->coll_data, arg2);
     lbColl_80008D30((HitCapsule*) &hit, arg3);
     ftCo_Barrel_ApplyKnockback(fp, kb_angle, (HitCapsule*) &hit);
+#if defined(PORT) || defined(LINT)
+    ftColl_800787B4(fp->mv.co.barrel.x8, gobj, NULL);
+#else
     ftColl_800787B4(fp->mv.co.barrel.x8, gobj, 0);
+#endif
     fp->x21EC = fn_800C9290;
     ftCo_8008DCE0(gobj, 0x5B, 0.0F);
 }

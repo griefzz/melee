@@ -1,4 +1,7 @@
 #include "ftpurin.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <melee/ft/kinds/ftCommon/forward.h>
 
@@ -463,6 +466,16 @@ void ftPr_Init_8013C360(HSD_GObj* gobj)
     HSD_Joint** joints = ft_8045A1E0;
     Fighter* fp = GET_FIGHTER(gobj);
 
+#ifdef PORT
+    // PORT: Slippi's CostumeBoundCheck (PuffCostume, in Common, at +0x28): a
+    // costume past the character's count loads no hat, as the last branch
+    // below does. Inert unless --slippi-general
+    // (port/mods/slippi/slippi_general.c).
+    if (port_hook_fighter_costume_out_of_range(fp)) {
+        fp->u.pr.x223C = 0;
+        return;
+    }
+#endif
     if (ftPr_Init_803D05B4[fp->costume_id]) {
         union ftData_Item* items = fp->ft_data->x48_items;
         struct ftData_x48_x4* parts = items[1].parts;

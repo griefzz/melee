@@ -8,6 +8,9 @@
 #include <sysdolphin/baselib/forward.h>
 
 #include <dolphin/mtx.h>
+#ifdef PORT
+#include <stddef.h> // offsetof, for the item arms below
+#endif
 
 struct ftMasterhand_FighterVars {
     /* 0x222C */ HSD_GObj* x222C;
@@ -146,7 +149,17 @@ union ftMasterHand_MotionVars {
     } unk13;
 
     struct ftMasterHand_FingerBeamVars {
+#ifdef PORT
+        // PORT: unk0.x4 is a function pointer, eight bytes here, so unk0's
+        // fields sit later than on the console, and unk0.x30 (the sound
+        // handle ftMh_MS_362_80152F80() sets to -1) would land on this x34's
+        // low half. The four lasers go past the end of unk0, where no field
+        // of it is; the hands' OnLoad clears them. See
+        // docs/design/verification.md, "Union arms".
+        char pad_0[sizeof(struct ftMasterHand_Unk0Vars)];
+#else
         /*  +0 fp+2340 */ char pad_0[0x34];
+#endif
         /* +34 fp+2374 */ Item_GObj* x34;
         /* +38 fp+2378 */ Item_GObj* x38;
         /* +3C fp+237C */ Item_GObj* x3C;
@@ -154,7 +167,15 @@ union ftMasterHand_MotionVars {
     } fingerbeam;
 
     struct ftMasterHand_GrabVars {
+#ifdef PORT
+        // PORT: Crazy Hand's four lasers (ftcrazyhandpoke.c) are 32 bytes
+        // here, so from +0x28 they would cover unk0.x20 and the sound
+        // handles at unk0.x38..x40. They go past the end of unk0, as
+        // fingerbeam's do.
+        char pad_0[sizeof(struct ftMasterHand_Unk0Vars)];
+#else
         char pad_0[0x28];
+#endif
         Item_GObj* x28;
         Item_GObj* x2C;
         Item_GObj* x30;
@@ -162,10 +183,22 @@ union ftMasterHand_MotionVars {
     } grab;
 
     struct ftMasterHand_Damage_0 {
+#ifdef PORT
+        // PORT: x28..x30 are unk0's sound handles and x34..x40 fingerbeam's
+        // lasers (ftmasterhanddamage0.c stops and frees both), each placed
+        // where that arm has it here.
+        char pad_0[offsetof(struct ftMasterHand_Unk0Vars, x28)];
+        int x28;
+        int x2C;
+        int x30;
+        char pad_34[sizeof(struct ftMasterHand_Unk0Vars) -
+                    offsetof(struct ftMasterHand_Unk0Vars, x34)];
+#else
         /*  +0 fp+2340 */ char pad_0[0x28];
         /* +28 fp+2368 */ int x28;
         /* +2C fp+236C */ int x2C;
         /* +30 fp+2370 */ int x30;
+#endif
         /* +34 fp+2374 */ Item_GObj* x34;
         /* +38 fp+2378 */ Item_GObj* x38;
         /* +3C fp+237C */ Item_GObj* x3C;
@@ -186,4 +219,26 @@ union ftMasterHand_MotionVars {
     } ch_backcrush;
 };
 
+#ifdef PORT
+// PORT: the arms that share storage on the console share it here, and the
+// item arms overlap no field of unk0.
+_Static_assert(offsetof(union ftMasterHand_MotionVars, dmg0.x28) ==
+                   offsetof(union ftMasterHand_MotionVars, unk0.x28),
+               "damage0 stops the sounds fingerbeam started");
+_Static_assert(offsetof(union ftMasterHand_MotionVars, dmg0.x30) ==
+                   offsetof(union ftMasterHand_MotionVars, unk0.x30),
+               "damage0 stops the sounds fingerbeam started");
+_Static_assert(offsetof(union ftMasterHand_MotionVars, dmg0.x34) ==
+                   offsetof(union ftMasterHand_MotionVars, fingerbeam.x34),
+               "damage0 frees the lasers fingerbeam made");
+_Static_assert(offsetof(union ftMasterHand_MotionVars, dmg0.x40) ==
+                   offsetof(union ftMasterHand_MotionVars, fingerbeam.x40),
+               "damage0 frees the lasers fingerbeam made");
+_Static_assert(offsetof(union ftMasterHand_MotionVars, fingerbeam.x34) >=
+                   sizeof(struct ftMasterHand_Unk0Vars),
+               "Master Hand's lasers overlap no field of unk0");
+_Static_assert(offsetof(union ftMasterHand_MotionVars, grab.x28) >=
+                   sizeof(struct ftMasterHand_Unk0Vars),
+               "Crazy Hand's lasers overlap no field of unk0");
+#endif
 #endif

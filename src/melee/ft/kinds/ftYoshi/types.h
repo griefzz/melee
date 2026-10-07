@@ -6,6 +6,10 @@
 #include <melee/it/forward.h>
 
 #include <placeholder.h>
+#if defined(PORT) || defined(LINT)
+#include <melee/ft/dobjlist.h> // TempS, for the egg's asserts below
+#include <stddef.h>            // offsetof
+#endif
 
 struct ftYoshi_FighterVars {
     /* 0x222C */ Vec3 x222C;
@@ -86,8 +90,19 @@ struct ftYs_DatAttrs {
     /*   +0 */ char pad_0[0x10];
     /*  +10 */ Vec2 x10;
     /*  +18 */ float x18;
+#if defined(PORT) || defined(LINT)
+    // PORT: floats, not UNK_T: ftYs_SpecialN_GetDatAttr1C() and
+    // ftYs_SpecialN_GetDatAttr20() (ftyoshispecialn.c) return them as
+    // `float`. UNK_T is `void*`, eight bytes here, so it moves every field
+    // after it, and this struct is laid over the character's attribute block
+    // at the console's offsets. Correct on PowerPC too. See
+    // docs/design/verification.md, "Fighter attribute layouts".
+    /*  +1C */ float x1C;
+    /*  +20 */ float x20;
+#else
     /*  +1C */ UNK_T x1C;
     /*  +20 */ UNK_T x20;
+#endif
     /*  +24 */ float x24;
     /*  +28 */ char pad_28[0xEC - 0x28];
     /*  +EC */ float xEC;
@@ -106,11 +121,31 @@ struct ftYs_DatAttrs {
 ASSERT_SIZE(struct ftYs_DatAttrs, 0x120);
 
 struct S_UNK_YOSHI2 {
+#if defined(PORT) || defined(LINT)
+    // PORT: two TempS records (ft/dobjlist.h), the parts lookup's first two,
+    // which ftparts.c walks as lookup->x4[j]: x8 and xC are the second's
+    // count and dobj indices. A TempS holds a pointer, so it is 16 bytes
+    // here, and read as four words the count is half a pointer, so Yoshi's
+    // shield egg never takes its material animation. Guarded PORT || LINT so
+    // both of the schema's passes see the pointer.
+    s32 x0;
+    u8* x4;
+    s32 x8_end_index;
+    u8* xC_start_index;
+#else
     s32 x0;
     s32 x4;
     s32 x8_end_index;
     u8* xC_start_index;
+#endif
 };
+#if defined(PORT) || defined(LINT)
+_Static_assert(offsetof(struct S_UNK_YOSHI2, x8_end_index) == sizeof(TempS),
+               "Yoshi's egg count is the second TempS's");
+_Static_assert(offsetof(struct S_UNK_YOSHI2, xC_start_index) ==
+                   sizeof(TempS) + offsetof(TempS, x4),
+               "Yoshi's egg dobj indices are the second TempS's");
+#endif
 
 struct S_UNK_YOSHI1 {
     s32 x0;
@@ -150,7 +185,14 @@ union ftYoshi_MotionVars {
         /* fp+2350 */ f32 x10;
         /* fp+2354 */ f32 x14;
         /* fp+2358 */ f32 x18;
+#ifdef PORT
+        // PORT: four bytes, as on the console, so x20 and x24 stay on
+        // mv.co.guard's x20 and x24, which ftCo_8009515C() and ftCo_Catch.c
+        // read for Yoshi too. See docs/design/verification.md, "Union arms".
+        /* fp+235C */ int x1C;
+#else
         /* fp+235C */ UNK_T x1C;
+#endif
         /* fp+2360 */ int x20;
         /* fp+2364 */ int x24;
     } guard;

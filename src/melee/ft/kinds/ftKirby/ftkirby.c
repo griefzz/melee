@@ -2512,8 +2512,17 @@ MotionState ftKb_Init_UnkMotionStates0[] = {
 
 void ftKb_Init_800EE528(void)
 {
+#ifdef PORT
+    // PORT: `copies` is a table of pointers, and clearing it a word at a
+    // time clears only its first half here. Kinds 17 and up would keep a hat
+    // from an earlier load, which ftKb_SpecialN_800EED50() then skips
+    // reloading and reads after the DAT arena released it. The stores are
+    // the same on PowerPC.
+    KirbyHatStruct** number_list = ft_80459B88.copies;
+#else
     /// @todo Bad cast.
     s32* number_list = (s32*) ft_80459B88.copies;
+#endif
     ftKirby_CostumeArchive** struct_list = ftKb_Init_803C9FC8;
 
     s32 i;
@@ -2685,16 +2694,42 @@ void ftKb_Init_LoadSpecialAttrs(HSD_GObj* gobj)
     COPY_ATTRS(gobj, ftKb_DatAttrs);
 }
 
+#if defined(PORT) || defined(LINT)
+// PORT: Mr. Game & Watch's copy (ftKbCopyParts_GameWatch) keeps its item
+// colours in slot 4, KirbyHatGwAttrs (ft/types.h), which upstream calls
+// `dynamics`; these two hand them out as ftGw_Init_8014A7F4() and
+// ftGw_Init_8014A814() do from his own attributes. The console's code reads
+// them as an ftDynamics whose second and third words sit at the same
+// offsets, which they do not here.
+void ftKb_Init_800EEB00(Fighter_GObj* gobj, u32* arg1)
+#else
 void ftKb_Init_800EEB00(Fighter_GObj* gobj, BoneDynamicsTemplate** arg1)
+#endif
 {
+#if defined(PORT) || defined(LINT)
+    *arg1 = ((KirbyHatGwAttrs*) ft_80459B88.copies[Ft_Kind_GameWatch]
+                 ->hat_dynamics[4])
+                ->x4_color;
+#else
     *arg1 = ft_80459B88.copies[Ft_Kind_GameWatch]
                 ->hat_dynamics[4]
                 ->x0.ftDynamicBones;
+#endif
 }
 
+#if defined(PORT) || defined(LINT)
+void ftKb_Init_800EEB1C(Fighter_GObj* gobj, u32* arg1)
+#else
 void ftKb_Init_800EEB1C(Fighter_GObj* gobj, s32* arg1)
+#endif
 {
+#if defined(PORT) || defined(LINT)
+    *arg1 = ((KirbyHatGwAttrs*) ft_80459B88.copies[Ft_Kind_GameWatch]
+                 ->hat_dynamics[4])
+                ->x8_outline;
+#else
     *arg1 = ft_80459B88.copies[Ft_Kind_GameWatch]->hat_dynamics[4]->x4;
+#endif
 }
 
 void ftKb_Init_OnKnockbackEnter(HSD_GObj* gobj)
@@ -2918,6 +2953,19 @@ static inline void ftKb_SpecialN_800EF0E4_finish(Fighter* fp, s32 total_dobjs)
     PAD_STACK(4);
 }
 
+#ifdef PORT
+// PORT: the two hat loaders below fill fp->u.kb.hat.x14.data and .x1C.data,
+// the copied character's DObjs and the hat's, by byte offset: `<< 2` and
+// `+= 4`, the console's pointer size. ftKb_SpecialN_800EF35C(),
+// ftKb_SpecialN_800F1420() and ftparts.c read them back as `data[index]`,
+// so the stride is the pointer's size here; the #else keeps the console's 4.
+// See docs/design/verification.md, "Console byte offsets and sizes".
+#define KB_DOBJ_STRIDE ((s32) sizeof(HSD_DObj*))
+#else
+#if defined(PORT) || defined(LINT)
+#define KB_DOBJ_STRIDE 4
+#endif
+#endif
 void ftKb_SpecialN_800EF0E4(Fighter_GObj* gobj, int arg1, u8* arg2)
 {
     HSD_Joint* current_joint;
@@ -2942,7 +2990,11 @@ void ftKb_SpecialN_800EF0E4(Fighter_GObj* gobj, int arg1, u8* arg2)
                                     &current_joint, &joint_idx, &byte_base);
     joint_idx = 0;
     arg2_idx = 0;
+#if defined(PORT) || defined(LINT)
+    byte_off = total_dobjs * KB_DOBJ_STRIDE;
+#else
     byte_off = total_dobjs << 2;
+#endif
     insert_part_idx = 0;
     while (current_joint != NULL) {
         group_count = 0;
@@ -2982,8 +3034,13 @@ void ftKb_SpecialN_800EF0E4(Fighter_GObj* gobj, int arg1, u8* arg2)
                     hsdChangeClass(mobj, &ftMObj);
                 }
                 dobj = (dobj != NULL) ? dobj->next : NULL;
+#if defined(PORT) || defined(LINT)
+                dst_off += KB_DOBJ_STRIDE;
+                byte_off += KB_DOBJ_STRIDE;
+#else
                 dst_off += 4;
                 byte_off += 4;
+#endif
                 total_dobjs += 1;
                 group_count += 1;
             }
@@ -3048,7 +3105,11 @@ void ftKb_SpecialN_800EF438(Fighter_GObj* gobj, KirbyHatStruct* hat)
                                         &insert_part_idx, &current_joint,
                                         &joint_idx, &byte_base);
         joint_idx = 0;
+#if defined(PORT) || defined(LINT)
+        byte_off = total_dobjs * KB_DOBJ_STRIDE;
+#else
         byte_off = total_dobjs << 2;
+#endif
         insert_part_idx = 0;
         while (current_joint != NULL) {
             group_count = 0;
@@ -3090,8 +3151,13 @@ void ftKb_SpecialN_800EF438(Fighter_GObj* gobj, KirbyHatStruct* hat)
                         hsdChangeClass(mobj, &ftMObj);
                     }
                     dobj = (dobj != NULL) ? dobj->next : NULL;
+#if defined(PORT) || defined(LINT)
+                    dst_off += KB_DOBJ_STRIDE;
+                    byte_off += KB_DOBJ_STRIDE;
+#else
                     dst_off += 4;
                     byte_off += 4;
+#endif
                     total_dobjs += 1;
                     group_count += 1;
                 }
@@ -3141,9 +3207,16 @@ void ftKb_SpecialN_800EF69C(Fighter_GObj* gobj, int arg1, KirbyHatStruct* hat)
             if (jobj != NULL &&
                 (bone->x8.x0.flags_b6 || bone->x8.x0.flags2_b7))
             {
+#ifdef PORT
+                // PORT: byte 9 is x8's second byte on the console and inside
+                // x4_jobj2 here; its bits 1 and 2 are flags2_b6 and flags2_b5.
+                if (bone->x8.x0.flags2_b6) {
+                    if (bone->x8.x0.flags2_b5) {
+#else
                 u8* b9p = &((u8*) bone)[9];
                 if ((*b9p >> 1) & 1) {
                     if ((*b9p >> 2) & 1) {
+#endif
                         dobj = fp->x203C.data[bone->xC_u.x0.xD];
                     } else {
                         dobj = fp->dobj_list.data[bone->xC_u.x0.xD];
@@ -3711,9 +3784,18 @@ void ftKb_SpecialN_800F14B4(Fighter_GObj* gobj)
         fp->u.kb.hat.x24.xC[4] = lookup;
         fp->x5AC.xC[4] = lookup;
         ftParts_80074D7C(&fp->u.kb.hat.x24, 4, &fp->u.kb.hat.x14);
+#if defined(PORT) || defined(LINT)
+        ftKb_SpecialN_800F1420(
+            gobj, &((KirbyHatGwAttrs*) hat->hat_dynamics[4])->x4_color);
+#else
         ftKb_SpecialN_800F1420(gobj, (u32*) ((u8*) hat->hat_dynamics[4] + 4));
+#endif
         *(u32*) &fp->x610_color_rgba[1] =
+#if defined(PORT) || defined(LINT)
+            ((KirbyHatGwAttrs*) hat->hat_dynamics[4])->x8_outline;
+#else
             *(u32*) ((u8*) hat->hat_dynamics[4] + 8);
+#endif
         Fighter_UpdateModelScale(gobj);
     }
 }

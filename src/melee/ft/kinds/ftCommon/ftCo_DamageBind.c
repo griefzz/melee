@@ -33,6 +33,20 @@ bool ftCo_800C44CC(Fighter_GObj* gobj)
 
 static void commonCall(Fighter* fp)
 {
+#ifdef PORT
+    // PORT: the slot term is added unfused, as the console adds it; see
+    // ftCo_800C0D0C() (ftCo_Bury.c).
+    float slot_term = p_ftCommonData->x664 *
+                      (p_ftCommonData->pressed_inputs -
+                       (Player_80033BB8(fp->player_idx) + 1));
+
+    ftCommon_InitGrab(
+        fp, 0,
+        (fp->dmg.x1830_percent * p_ftCommonData->released_inputs) +
+            (p_ftCommonData->x65C *
+                 (p_ftCommonData->x660 - Player_GetHandicap(fp->player_idx)) +
+             p_ftCommonData->x658 + slot_term));
+#else
     ftCommon_InitGrab(
         fp, 0,
         (fp->dmg.x1830_percent * p_ftCommonData->released_inputs) +
@@ -41,6 +55,7 @@ static void commonCall(Fighter* fp)
              p_ftCommonData->x658 +
              p_ftCommonData->x664 * (p_ftCommonData->pressed_inputs -
                                      (Player_80033BB8(fp->player_idx) + 1))));
+#endif
 }
 
 void ftCo_800C4550(Fighter_GObj* gobj)

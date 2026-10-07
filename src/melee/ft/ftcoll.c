@@ -1,4 +1,8 @@
 #include "ftcoll.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <Runtime/platform.h>
 
@@ -971,7 +975,15 @@ bool ftColl_80077C60(Item* item, HitCapsule* hit, Fighter* fp,
                                 entry->x10.hit1 = hit2;
                                 entry->pos = hit->hurt_coll_pos;
                                 entry->x20 = f4;
+#ifdef PORT
+                                // PORT: an item hit's damage is scaled by
+                                // data and can be negative, which the
+                                // console's __cvt_fp2unsigned makes 0.
+                                entry->size_of_xC =
+                                    port_cvt_fp2unsigned(half_raw_f);
+#else
                                 entry->size_of_xC = (size_t) half_raw_f;
+#endif
                                 dmg_log1_idx++;
                             } else {
                                 HSD_ASSERTREPORT(0x110, 0,
@@ -1080,7 +1092,16 @@ bool ftColl_80077C60(Item* item, HitCapsule* hit, Fighter* fp,
                         entry->x10.hit1 = hit2;
                         entry->pos = hit->hurt_coll_pos;
                         entry->x20 = hit->damage;
+#ifdef PORT
+                        // PORT: an item hit's damage is scaled by data and
+                        // can be negative, which the console's
+                        // __cvt_fp2unsigned makes 0; see
+                        // docs/design/verification.md, "Floats converted to
+                        // unsigned".
+                        entry->size_of_xC = port_cvt_fp2unsigned(raw_dmg);
+#else
                         entry->size_of_xC = (size_t) raw_dmg;
+#endif
                         dmg_log0_idx++;
                     } else {
                         HSD_ASSERTREPORT(0xE3, 0, "damage log over %d!!\n",
@@ -1214,7 +1235,11 @@ void ftColl_80078710(Fighter_GObj* arg0, Fighter_GObj* arg1, UNK_T arg2)
                     fp->x2074.x2088, arg2, 0);
 }
 
+#if defined(PORT) || defined(LINT)
+void ftColl_80078754(Fighter_GObj* arg0, Fighter_GObj* arg1, UNK_T arg2)
+#else
 void ftColl_80078754(Fighter_GObj* arg0, Fighter_GObj* arg1, bool arg2)
+#endif
 {
     Fighter* fp0;
     Fighter* fp1;
@@ -1224,13 +1249,21 @@ void ftColl_80078754(Fighter_GObj* arg0, Fighter_GObj* arg1, bool arg2)
     fp1 = arg1->user_data;
 
     ftColl_8007861C(arg0, arg1, 1, fp0->kind, fp0->x2070.x2070_int,
+#if defined(PORT) || defined(LINT)
+                    &fp0->x2074, fp0->x2074.x2088, arg2, 0);
+#else
                     &fp0->x2074, fp0->x2074.x2088, (void*) arg2, 0);
+#endif
 
     fp1->dmg.x18c4_source_ply = 6;
     fp1->dmg.x18C8 = -1;
 }
 
+#if defined(PORT) || defined(LINT)
+void ftColl_800787B4(Item_GObj* arg0, Fighter_GObj* arg1, UNK_T arg2)
+#else
 void ftColl_800787B4(Item_GObj* arg0, Fighter_GObj* arg1, int arg2)
+#endif
 {
     Item* ip = arg0->user_data;
     Fighter* fp = arg1->user_data;
@@ -1244,13 +1277,25 @@ void ftColl_800787B4(Item_GObj* arg0, Fighter_GObj* arg1, int arg2)
 
     if (ftLib_IsFighter(owner)) {
         ftColl_8007861C(owner, arg1, 2, ip->kind, ip->xD90.x2070_int,
+#if defined(PORT) || defined(LINT)
+                        &ip->xD94, ip->xDA8_short, arg2, 0);
+#else
                         &ip->xD94, ip->xDA8_short, (UNK_T) arg2, 0);
+#endif
     } else if (pl_8003D60C(ip->kind)) {
         ftColl_8007861C(NULL, arg1, 2, ip->kind, ip->xD90.x2070_int, &ip->xD94,
+#if defined(PORT) || defined(LINT)
+                        ip->xDA8_short, arg2, 1);
+#else
                         ip->xDA8_short, (UNK_T) arg2, 1);
+#endif
     } else {
         ftColl_8007861C(NULL, arg1, 2, ip->kind, ip->xD90.x2070_int, &ip->xD94,
+#if defined(PORT) || defined(LINT)
+                        ip->xDA8_short, arg2, 0);
+#else
                         ip->xDA8_short, (UNK_T) arg2, 0);
+#endif
     }
 }
 
@@ -2072,6 +2117,30 @@ static inline s32 ftColl_GetDamageCount(Fighter* fp, ftCommonData* ftd)
 /// Shared knockback formula shell. @p inner is the per-branch scaling term.
 /// @remarks Must stay one nested expression; step assignments change the
 /// float register webs.
+#ifdef PORT
+// PORT: MWCC contracted three multiply-adds here into fmadds: the inner
+// term's, `x11C * (...) + x120` and `0.01 * x24 * (...) + x2C`
+// (ftColl_80079AB0+0x98/+0xA0/+0xA4 and +0x184/+0x190/+0x194, and the same
+// three in ftColl_80079EA8 and the copy ftColl_80079C70 inlines). The port
+// fuses them too (docs/design/build.md, "Rounding and division"): a
+// knockback one ULP off can truncate to a different hitstun in
+// ftCo_8008DCE0() (ftCo_Damage.c). The callers below use KNOCKBACK_MADD,
+// which the console's arm defines as the plain expression.
+#define KNOCKBACK_MADD(a, b, c) __builtin_fmaf((a), (b), (c))
+#define KNOCKBACK(defense, attack, arg3, one, ftd, hit, w, inner)             \
+    ((defense) *                                                              \
+     ((attack) *                                                              \
+      ((arg3) *                                                               \
+       KNOCKBACK_MADD(                                                        \
+           0.01F * (hit)->x24,                                                \
+           KNOCKBACK_MADD(                                                    \
+               (ftd)->x11C,                                                   \
+               ((ftd)->xF8 - (((w) * (ftd)->xF8) / ((one) + (w)))) *          \
+                   (inner),                                                   \
+               (ftd)->x120),                                                  \
+           (float) (hit)->x2C))))
+#else
+#define KNOCKBACK_MADD(a, b, c) ((a) * (b) + (c))
 #define KNOCKBACK(defense, attack, arg3, one, ftd, hit, w, inner)             \
     ((defense) *                                                              \
      ((attack) *                                                              \
@@ -2081,6 +2150,7 @@ static inline s32 ftColl_GetDamageCount(Fighter* fp, ftCommonData* ftd)
                         (inner)) +                                            \
                    (ftd)->x120)) +                                            \
                  (hit)->x2C))))
+#endif
 
 float ftColl_80079AB0(Fighter* fp, HitCapsule* hit, u32 unk_count, float arg3,
                       float attack, float defense, float weight)
@@ -2098,7 +2168,8 @@ float ftColl_80079AB0(Fighter* fp, HitCapsule* hit, u32 unk_count, float arg3,
         x118 = ftd->x118;
 
         result = KNOCKBACK(defense, attack, arg3, 1.0F, ftd, hit, w,
-                           x118 * ftd->x110 + ftd->x114 * (x118 * hit->x28));
+                           KNOCKBACK_MADD(x118, ftd->x110,
+                                          ftd->x114 * (x118 * hit->x28)));
     } else {
         s32 count;
 
@@ -2106,8 +2177,10 @@ float ftColl_80079AB0(Fighter* fp, HitCapsule* hit, u32 unk_count, float arg3,
 
         result = KNOCKBACK(
             defense, attack, arg3, 1.0F, ftd, hit, w,
-            ftd->x110 * (count + fp->dmg.x1838_percentTemp) +
-                ftd->x114 * (unk_count * (count + fp->dmg.x1838_percentTemp)));
+            KNOCKBACK_MADD(
+                ftd->x110, (count + fp->dmg.x1838_percentTemp),
+                ftd->x114 *
+                    (unk_count * (count + fp->dmg.x1838_percentTemp))));
     }
 
     if (result >= ftd->x108) {
@@ -2142,7 +2215,8 @@ float ftColl_80079EA8(Fighter* fp, HitCapsule* hit, u32 unk_count)
         x118 = ftd->x118;
 
         result = KNOCKBACK(one, one, one, one, ftd, hit, w,
-                           x118 * ftd->x110 + ftd->x114 * (x118 * hit->x28));
+                           KNOCKBACK_MADD(x118, ftd->x110,
+                                          ftd->x114 * (x118 * hit->x28)));
     } else {
         s32 count;
 
@@ -2153,9 +2227,10 @@ float ftColl_80079EA8(Fighter* fp, HitCapsule* hit, u32 unk_count)
 
             result = KNOCKBACK(
                 one, one, one, one, ftd, hit, w,
-                ftd->x110 * (count + fp->dmg.x1838_percentTemp) +
+                KNOCKBACK_MADD(
+                    ftd->x110, (count + fp->dmg.x1838_percentTemp),
                     ftd->x114 *
-                        (unk_count * (count + fp->dmg.x1838_percentTemp)));
+                        (unk_count * (count + fp->dmg.x1838_percentTemp))));
         }
     }
 
@@ -2253,7 +2328,14 @@ void ftColl_8007A06C(Fighter_GObj* gobj, void* dmg_ptr, void* log, size_t idx,
             kb = ftColl_80079C70(fp, attacker_fp, hit, unk_count);
 
             if (arg4 != 0) {
+#ifdef PORT
+                // PORT: a hit's damage, scaled by data, sizes the hit effect
+                // and can be negative; the console's __cvt_fp2unsigned makes
+                // that 0.
+                u32 dmg = port_cvt_fp2unsigned(entry->x20);
+#else
                 u32 dmg = entry->x20;
+#endif
                 int effect = hit_effect_ids[entry->xC.hit0->element];
                 spawnHitEffect(gobj, effect, &entry->pos,
                                entry->xC.hit0->sfx_severity, dmg, kb);
@@ -2277,7 +2359,14 @@ void ftColl_8007A06C(Fighter_GObj* gobj, void* dmg_ptr, void* log, size_t idx,
                 Player_GetDefenseRatio(fp->player_idx), co->weight);
 
             if (arg4 != 0) {
+#ifdef PORT
+                // PORT: a hit's damage, scaled by data, sizes the hit effect
+                // and can be negative; the console's __cvt_fp2unsigned makes
+                // that 0.
+                u32 dmg = port_cvt_fp2unsigned(entry->x20);
+#else
                 u32 dmg = entry->x20;
+#endif
                 int effect = hit_effect_ids[entry->xC.hit0->element];
                 spawnHitEffect(gobj, effect, &entry->pos,
                                entry->xC.hit0->sfx_severity, dmg, kb);
@@ -2643,6 +2732,11 @@ void ftColl_8007B128(Fighter_GObj* fighter_gobj, int bone_id,
         }
     }
 
+#ifdef PORT
+    // PORT: the fighter_hurt_bone_missing hook reports the bone asked for
+    // and the bones there are, which the message below names neither of.
+    port_hook_fighter_hurt_bone_missing(fp, bone_id);
+#endif
     HSD_ASSERTREPORT(0x888, 0,
                      "in ftCollisionSetHitStatus illegal parts!\n");
 }
@@ -3108,7 +3202,15 @@ void ftColl_8007BE3C(Fighter_GObj* gobj)
             ftColl_80078998(fp->dmg.x1894, fp->gobj, fp->dmg.x1898);
             break;
         }
+#ifdef PORT
+        // PORT: a hit's damage, scaled by data, sizes the hit effect and can
+        // be negative; the console's __cvt_fp2unsigned makes that 0.
+        spawnHitEffect(gobj, getHitEffectId(fp->dmg.x188c), &fp->dmg.x1880,
+                       fp->dmg.x1890, port_cvt_fp2unsigned(fp->dmg.x1898),
+                       fp->dmg.x187c);
+#else
         spawnHitEffect(gobj, getHitEffectId(fp->dmg.x188c), &fp->dmg.x1880,
                        fp->dmg.x1890, fp->dmg.x1898, fp->dmg.x187c);
+#endif
     }
 }

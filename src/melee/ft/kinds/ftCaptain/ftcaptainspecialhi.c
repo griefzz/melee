@@ -1,4 +1,7 @@
 #include "ftcaptainspecialhi.h"
+#ifdef PORT
+#include <port/ppc.h> // port_cvt_fp2unsigned()
+#endif
 
 #include <Runtime/platform.h>
 
@@ -35,7 +38,14 @@ static void ftCa_SpecialLw_800E49FC(HSD_GObj* gobj)
     fp->x1968_jumpsUsed = fp->co_attrs.max_jumps;
     fp->mv.ca.specialhi.x0 = da->specialhi_air_var;
     fp->cmd_vars[0] = 0;
+#ifdef PORT
+    // PORT: specialhi_unk2 is a float from the fighter's file, and the
+    // console's __cvt_fp2unsigned makes a negative one 0; see
+    // docs/design/verification.md, "Floats converted to unsigned".
+    fp->cmd_vars[1] = port_cvt_fp2unsigned(da->specialhi_unk2);
+#else
     fp->cmd_vars[1] = da->specialhi_unk2;
+#endif
     fp->mv.ca.specialhi.vel.x = 0;
     fp->mv.ca.specialhi.vel.y = 0;
     fp->mv.ca.specialhi.x2_b0 = false;

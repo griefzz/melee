@@ -1,4 +1,7 @@
 #include "ftlib.h"
+#ifdef PORT
+#include <port/hooks.h> // docs/design/mods.md
+#endif
 
 #include <melee/it/forward.h>
 
@@ -31,6 +34,9 @@
 #include <sysdolphin/baselib/gobj.h>
 #include <sysdolphin/baselib/random.h>
 #include <sysdolphin/baselib/rumble.h>
+#ifdef PORT
+#include <port/gfx.h>
+#endif
 
 s32 ftLib_CountFighters(void)
 {
@@ -267,6 +273,15 @@ float ftLib_GetOpponentsDir(Vec3* v, HSD_GObj* gobj)
             }
 
             ftLib_GetCameraBonePos(cur, &vec);
+#ifdef PORT
+            // PORT: Slippi's WhispyBlowDirFix (Online/Core, at +0x94, the
+            // load of vec.x after this call): a dead or sleeping fighter is
+            // on neither side. The asm has no online test, so the hook runs
+            // whenever the Slippi mod is on (port/mods/slippi/slippi_mod.c).
+            if (port_hook_whispy_ignores_fighter(cur_fp)) {
+                continue;
+            }
+#endif
             result += sgn(vec.x - v->x);
         }
     }
@@ -541,6 +556,20 @@ bool ftLib_UpdateScreenVisibility(HSD_GObj* gobj)
                     return true;
                 }
                 fp->x221F_b0 = true;
+#ifdef PORT
+                // PORT: in widescreen the view is wider than the 4:3 this
+                // test and its 15-unit tolerance were written for, so a
+                // fighter past the tolerance can still be in the picture.
+                // Draw it; the frustum clips what is really outside. The
+                // renderer cannot make this decision from below, and
+                // Slippi's widescreen code nops the same branch ("Draw High
+                // Poly Models.asm"). It affects drawing only: x221F_b0 is
+                // read by the off-screen bubble and nothing else. See
+                // docs/design/renderer.md, "What the game hides".
+                if (port_gfx_view_widen() > 1.0f) {
+                    return true;
+                }
+#endif
                 if (Camera_80030CFC(fp->x890_cameraBox, 15)) {
                     return true;
                 }
