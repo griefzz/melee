@@ -67,7 +67,16 @@ void it_2725_Logic41_PickedUp(Item_GObj* gobj)
     Item* ip = GET_ITEM(gobj);
     ip->xDAC_itcmd_var0 = ip->xDB0_itcmd_var1 = 0;
     if (ip->owner != NULL) {
+#ifdef PORT
+        // PORT: this asks ftLib_GetGroundAir() about the item's own gobj,
+        // so on the console it reads the item at Fighter's ground_or_air
+        // offset, +0xE0, which is the count of the item's first dynamic-bone
+        // set. The two structs are laid out differently here, and the same
+        // call would read another field; read the one the console reads.
+        if (ip->xD4_dynamicBones[0].dyn_desc.count != 1) {
+#else
         if (ftLib_GetGroundAir(gobj) != 1) {
+#endif
             Item_80268E5C(gobj, 0, ITEM_ANIM_UPDATE);
         } else {
             Item_80268E5C(gobj, 1, ITEM_ANIM_UPDATE);
