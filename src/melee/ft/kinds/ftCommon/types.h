@@ -130,8 +130,19 @@ union ftCommon_MotionVars {
         /* fp+2340 */ float x0;
         /* fp+2344 */ int x4;
         /* fp+2348 */ int x8;
+#ifdef PORT
+        // PORT: four bytes each, as on the console, so x14..x1B stay at
+        // +0x14..+0x1B. Nothing reads these two through this arm. Yoshi's
+        // shield (ftYs_Init_8012BECC()) does not set mv.co.guard's x14 and
+        // x18, so ftCo_80093BC0() counts down from whatever the state
+        // before it left there, which after tumble is this arm's. See
+        // docs/design/verification.md, "Union arms".
+        /* fp+234C */ u32 xC;
+        /* fp+2350 */ u32 x10;
+#else
         /* fp+234C */ UNK_T xC;
         /* fp+2350 */ UNK_T x10;
+#endif
         /* fp+2354 */ float x14;
         /* fp+2358 */ u8 x18;
         /* fp+2359 */ u8 x19;
