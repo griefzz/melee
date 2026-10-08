@@ -1822,10 +1822,19 @@ struct CommandInfo {
         CmdUnion* u;
     } x8;
     u32 loop_count; // 0x0C
+#ifdef PORT
+    // PORT: five entries. The console's struct is 0x24 bytes (Fighter's
+    // next field is at +0x408, Item's at +0x548), so the two words after the
+    // three declared ones are the stack's fourth and fifth entries, which a
+    // nested SetLoop pushes (Command_03()). Declared as three, those entries
+    // land past the struct here, on the fighter's first ColorOverlay.
+    union CmdUnion* event_return[5];
+#else
     union CmdUnion*
         event_return[3]; // 0x10 - Array Size is purely made-up for now
     u32 loop_count_dup;  // 0x14
     u32 unk_x18;         // 0x18
+#endif
 };
 
 #ifdef PORT

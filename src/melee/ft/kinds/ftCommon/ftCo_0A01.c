@@ -7298,11 +7298,22 @@ void ftCo_800B0760(Fighter* fp)
 /// @todo Maybe a macro?
 static inline u8 inlineM0(float x)
 {
+#ifdef PORT
+    // PORT: a negative float converted to u8 is undefined in C. The
+    // console converts to 32 bits (fctiwz) and stores the low byte, and
+    // so does this, so an optimiser cannot answer anything else.
+    if (x >= 0) {
+        return (u8) (s32) (127.0F * x);
+    } else {
+        return (u8) (s32) (128.0F * x);
+    }
+#else
     if (x >= 0) {
         return 127.0F * x;
     } else {
         return 128.0F * x;
     }
+#endif
 }
 
 void ftCo_800B0918(Fighter* fp0, Fighter* fp1)
