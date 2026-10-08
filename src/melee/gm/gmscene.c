@@ -363,6 +363,10 @@ void gm_801A4D34(void (*on_frame)(void), UNUSED GameSceneInfo* info)
             // sysdolphin's seed with `(global frame << 16) + the match's RNG
             // offset`. This is that proc, immediately before the dispatcher
             // that runs every gobj (port/mods/slippi/slippi.c).
+            // PORT: and before it, the frames of a pause that a recording
+            // does not hold, which moved the console's counter on; --replay
+            // puts them back (port/game/replay_pause.c).
+            temp_r25->unk_8 = port_hook_scene_frame_counter(temp_r25->unk_8);
             port_hook_scene_frame((unsigned) temp_r25->unk_8);
 #endif
             HSD_GObj_RunProcs();
