@@ -1,4 +1,8 @@
 #include "ftanim.h"
+#ifdef PORT
+#include <port/port.h> // port_log()
+#include <port/ppc.h>  // port_ppc_f1
+#endif
 
 #include <placeholder.h>
 
@@ -326,6 +330,13 @@ void ftAnim_8006E9B4(Fighter_GObj* gobj)
         return;
     }
 
+#ifdef PORT
+    // PORT: the console loads 0.0F into f1 to test the blend frames, and
+    // on this path ftAnim_8006F3DC() returns what f1 holds when it is
+    // called (port/ppc.h).
+    port_ppc_f1 = 0.0F;
+    port_ppc_f1_known = 1;
+#endif
     jobj = GET_JOBJ(gobj);
     if (fp->x8A4_animBlendFrames == 0.0F) {
         HSD_JObjClearFlagsAll(jobj, JOBJ_USE_QUATERNION);
@@ -334,6 +345,10 @@ void ftAnim_8006E9B4(Fighter_GObj* gobj)
                 fp, jobj,
                 fp->parts[ftParts_GetBoneIndex(fp, FtPart_TransN)].joint,
                 fp->parts[ftParts_GetBoneIndex(fp, 0x35)].joint);
+#ifdef PORT
+            // PORT: what this leaves in f1 is not modelled.
+            port_ppc_f1_known = 0;
+#endif
         } else {
             ftAnim_8006E7B8(fp, FtPart_TopN);
         }
@@ -369,6 +384,12 @@ void ftAnim_8006E9B4(Fighter_GObj* gobj)
 
     if (fp->x594.x0.x594_b2) {
         if (ftAnim_8006F3DC(gobj) < fp->cur_anim_frame) {
+#ifdef PORT
+            // PORT: the console loads the old x898_unk into f1 for this sum
+            // (port/ppc.h).
+            port_ppc_f1 = fp->x898_unk;
+            port_ppc_f1_known = 1;
+#endif
             fp->x898_unk += fp->cur_anim_frame + fp->frame_speed_mul;
         }
     }
@@ -574,9 +595,25 @@ float ftAnim_8006F3DC(Fighter_GObj* fighter_gobj)
     // PORT: the decomp has no `return` here. With blend frames at 0 and no
     // part passing the flag test (or a matching part whose joint has no
     // AObj), control falls off the end and the console returns whatever is
-    // in f1. Both callers store the result in fp->cur_anim_frame, so return
-    // the value that does not advance it.
-    return 0.0f;
+    // in f1, which ftAnim_8006E9B4() stores in fp->cur_anim_frame and
+    // Yoshi's shield restarts an animation from. port_ppc_f1 follows the
+    // instructions that write f1 on the way here (port/ppc.h); where it
+    // cannot, the value is the 0.0 this returned before, and each time is
+    // counted.
+    if (!port_ppc_f1_known) {
+        static int unmodelled = 0;
+
+        unmodelled++;
+        if (unmodelled == 1 || unmodelled % 100 == 0) {
+            port_log(PORT_LOG_WARN,
+                     "ftAnim_8006F3DC: the console's f1 is not modelled on "
+                     "this path (kind %d, motion state %d); returning 0.0 "
+                     "(%d so far)",
+                     (int) fp->kind, (int) fp->motion_id, unmodelled);
+        }
+        return 0.0f;
+    }
+    return port_ppc_f1;
 #endif
 }
 

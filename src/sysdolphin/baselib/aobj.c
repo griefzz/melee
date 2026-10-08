@@ -18,6 +18,14 @@
 #include "tobj.h"
 #include "wobj.h"
 
+#ifdef PORT
+#include <port/ppc.h> // port_ppc_f1
+
+// PORT: see port/ppc.h. Initialised, so they land in the simulation section.
+float port_ppc_f1 = 0.0f;
+int port_ppc_f1_known = 0;
+#endif
+
 HSD_ObjAllocData aobj_alloc_data;
 
 static HSD_SList* endcallback_list;
@@ -158,6 +166,15 @@ void HSD_AObjInterpretAnim(HSD_AObj* aobj, void* obj,
         HSD_FObjInterpretAnimAll(aobj->fobj, obj, update_func, rate);
     }
 
+#ifdef PORT
+    // PORT: the console's f1 on return (port/ppc.h). For a non-looping
+    // animation the test below loads end_frame into f1, and unless the
+    // animation stops here nothing after it writes f1 again. A looping one
+    // skips the test and returns with whatever the FObj code left.
+    port_ppc_f1 = aobj->end_frame;
+    port_ppc_f1_known =
+        !(aobj->flags & AOBJ_LOOP) && !(aobj->end_frame <= aobj->curr_frame);
+#endif
     if (!(aobj->flags & AOBJ_LOOP) && aobj->end_frame <= aobj->curr_frame) {
         HSD_AObjStopAnim(aobj, obj, update_func);
     }
