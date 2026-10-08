@@ -19,8 +19,15 @@
 #include <melee/mp/mplib.h>
 #include <sysdolphin/baselib/jobj.h>
 
+#ifdef PORT
+// PORT: it_803F8DE8 makes these predicates, and the item loop reads their
+// answer: on the console, what it_80273130() left in r3.
+static bool itArwinglaser_UnkMotion2_Anim(Item_GObj*);
+static bool itArwinglaser_UnkMotion3_Anim(Item_GObj*);
+#else
 static void itArwinglaser_UnkMotion2_Anim(Item_GObj*);
 static void itArwinglaser_UnkMotion3_Anim(Item_GObj*);
+#endif
 static void itArwinglaser_UnkMotion2_Phys(Item_GObj*);
 static void itArwinglaser_UnkMotion3_Phys(Item_GObj*);
 static bool itArwinglaser_UnkMotion2_Coll(Item_GObj*);
@@ -334,7 +341,12 @@ void it_802E7A4C(Item_GObj* gobj)
     Item_80268E5C(gobj, item->xDD4_itemVar.arwinglaser.xE38, 2);
 }
 
+#ifdef PORT
+// PORT: returned, as the declaration above says why.
+static bool itArwinglaser_UnkMotion2_Anim(Item_GObj* gobj)
+#else
 static void itArwinglaser_UnkMotion2_Anim(Item_GObj* gobj)
+#endif
 {
     Item* ip = GET_ITEM(gobj);
 
@@ -342,16 +354,29 @@ static void itArwinglaser_UnkMotion2_Anim(Item_GObj* gobj)
     if (it_80272C6C(gobj) == 0) {
         ip->xDD4_itemVar.arwinglaser.xE30 = 1;
     }
+#ifdef PORT
+    return it_80273130(gobj);
+#else
     it_80273130(gobj);
+#endif
 }
 
+#ifdef PORT
+// PORT: returned, as the declaration above says why.
+static bool itArwinglaser_UnkMotion3_Anim(Item_GObj* gobj)
+#else
 static void itArwinglaser_UnkMotion3_Anim(Item_GObj* gobj)
+#endif
 {
     Item* ip = GET_ITEM(gobj);
 
     ip->xDD4_itemVar.arwinglaser.xE24 = ip->xDD4_itemVar.arwinglaser.xE18;
     ip->xDD4_itemVar.arwinglaser.xE30 = 1;
+#ifdef PORT
+    return it_80273130(gobj);
+#else
     it_80273130(gobj);
+#endif
 }
 
 static void itArwinglaser_UnkMotion2_Phys(Item_GObj* gobj)
