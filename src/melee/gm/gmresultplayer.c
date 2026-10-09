@@ -26,6 +26,7 @@
 #include <sysdolphin/baselib/wobj.h>
 #ifdef PORT
 #include <port/gfx.h>
+#include <port/hooks.h> // docs/design/mods.md
 #endif
 
 extern ResultsData lbl_8046DBE8;
@@ -1107,10 +1108,21 @@ static inline void fn_80178BB4_init_players(ResultsData* data,
                 {
                     u32 rank_val;
                     HSD_AObj* rank_aobj;
+#ifdef PORT
+                    // PORT: the results_panel_player_type hook, where
+                    // Slippi's GrayPanelsForRemotePlayers.asm changes this
+                    // call's last argument (fn_80178BB4+0x458).
+                    rank_val = gm_80160854(
+                        (*i), match_end->player_standings[(*i)].team,
+                        (u8) (match_end->is_teams == 1),
+                        port_hook_results_panel_player_type(
+                            match_end->player_standings[(*i)].pkind, (*i)));
+#else
                     rank_val = gm_80160854(
                         (*i), match_end->player_standings[(*i)].team,
                         (u8) (match_end->is_teams == 1),
                         match_end->player_standings[(*i)].pkind);
+#endif
                     rank_aobj =
                         data->player_data[(*i)].jobjs[2]->u.dobj->mobj->aobj;
                     HSD_AObjSetCurrentFrame(rank_aobj,
@@ -1316,6 +1328,11 @@ void fn_80179350(HSD_GObj* arg0)
     int i;
     PAD_STACK(8);
     match_end = fn_80174274();
+#ifdef PORT
+    // PORT: the results_frame hook, where Slippi's ControlAllPanels.asm
+    // runs (fn_80179350+0x28).
+    port_hook_results_frame();
+#endif
     for (i = 0; i < 6; i++) {
         if (data->player_data[i].jobjs[12] != NULL) {
             lb_8000B1CC(data->player_data[i].jobjs[12], NULL,
