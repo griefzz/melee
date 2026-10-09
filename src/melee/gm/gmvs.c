@@ -1964,10 +1964,8 @@ void fn_8016E124(void)
 void fn_8016E2BC(void)
 {
 #ifdef PORT
-    // PORT: Slippi's spawn order counts occupied slots rather than using
-    // the slot index. With players in ports 1 and 2 the two coincide; with
-    // an empty port between them they do not.
-    int port_order;
+    // PORT: the facing the match_spawn_point hook gives.
+    float port_facing;
 #endif
     UNUSED u8 pad[8];
     Vec3 sp24;
@@ -2008,35 +2006,27 @@ void fn_8016E2BC(void)
         fn_80169F50(Player_GetPlayerCharacter(0), Player_GetCostumeId(0));
     } else {
         fn_8016DEEC();
-#ifdef PORT
-        port_order = 0;
-#endif
         for (i = 0; i < 6; i++) {
             if (Player_GetPlayerSlotType(i) != Gm_PKind_NA) {
                 getSpawnPoint(i, &sp18);
 #ifdef PORT
-                // PORT: the match_spawn_point hook, for --neutral-spawn.
-                // Slippi's Dolphin injects NeutralSpawn (C216E510 00000098)
-                // at +0x254, between getSpawnPoint() above and
-                // Player_80032768() below, and replaces the position with a
-                // constant from a per-stage table. Slippi's recordings spawn
-                // there even where their Gecko list does not name the code.
-                // Off unless the Slippi mod's neutral_spawn is on.
-                if (port_hook_match_spawn_point((int) controller.start.stkind,
-                                       port_order, &sp18.x, &sp18.y))
+                // PORT: the match_spawn_point hook, for Slippi's
+                // NeutralSpawn (C216E510 00000098). Slippi's Dolphin injects
+                // it at +0x254, just after Player_80032768() below, where it
+                // places the fighter again and faces it toward the stage's
+                // centre. Placing it here leaves the same state: that call
+                // only stores the position, and the facing block below runs
+                // for a facing of 0, which fn_8016DEEC() has already
+                // replaced. Slippi's recordings spawn there even where their
+                // Gecko list does not name the code. Off unless the Slippi
+                // mod's neutral_spawn is on.
+                if (port_hook_match_spawn_point(
+                        (int) controller.start.stkind, i,
+                        controller.start.is_teams == true, &sp18.x,
+                        &port_facing))
                 {
-                    sp18.z = 0.0f;
-                    // PORT: the code also sets the facing ("always faces
-                    // spawned players toward stage center"), and the block
-                    // below cannot: fn_8016DEEC() has already faced every
-                    // player at the furthest opponent from the game's own
-                    // spawn points, so `facing == 0` there is false. A
-                    // fighter left facing off the stage turns, rather than
-                    // walks, at the first stick press toward the centre.
-                    Player_SetFacingDirection(i, sp18.x >= 0.0f ? -1.0f
-                                                                : +1.0f);
+                    Player_SetFacingDirection(i, port_facing);
                 }
-                port_order++;
 #endif
                 tmp = &controller;
                 if (Player_GetFacingDirection(i) == 0.0F) {
