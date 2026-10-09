@@ -8,6 +8,74 @@ use melee_dat::{
 };
 use std::collections::HashMap;
 
+#[test]
+fn tagged_plain_union_uses_the_selected_record_size() {
+    let mut graph = graph(None);
+    ty(
+        &mut graph,
+        11,
+        None,
+        Some(8),
+        TypeKind::Array {
+            element: Some(1),
+            dims: vec![Some(2)],
+        },
+    );
+    let small = member(&mut graph, "small", 1, 0, &["dat:if(kind == 0)"]);
+    let large = member(&mut graph, "large", 11, 0, &["dat:if(kind == 1)"]);
+    ty(
+        &mut graph,
+        10,
+        Some("PlainChoice"),
+        Some(8),
+        TypeKind::Record {
+            union: true,
+            declaration: false,
+            members: vec![small, large],
+        },
+    );
+    let canonical = Canonical::new(&graph);
+    let macros = HashMap::new();
+    for (kind, size, relocs) in
+        [(0, 4, vec![]), (0, 8, vec![4]), (1, 8, vec![])]
+    {
+        let data = [123u32.to_be_bytes(), 456u32.to_be_bytes()].concat();
+        let archive = Archive {
+            header: ArchiveHeader {
+                file_size: 0,
+                data_size: size as u32,
+                reloc_count: relocs.len() as u32,
+                public_count: 0,
+                extern_count: 0,
+                version: [0; 12],
+            },
+            data: &data[..size],
+            relocs,
+            publics: vec![],
+            externs: vec![],
+            symbols: &[],
+        };
+        for array in [false, true] {
+            let mut walker =
+                Walker::new(&graph, &canonical, &macros, &archive);
+            let binds = [("kind".into(), kind)];
+            if array {
+                walker.root_array(0, 10, Some(1), "root", &binds);
+            } else {
+                walker.root(0, 10, "root", &binds);
+            }
+            let walked = walker.finish();
+            assert!(walked.issues.is_empty(), "{:?}", walked.issues);
+            assert_eq!(
+                walked.choices[&(0, canonical.of(10).unwrap())],
+                kind as usize
+            );
+            assert_eq!(walked.extents[&0], if kind == 0 { 4 } else { 8 });
+            assert!(walked.pointers.is_empty());
+        }
+    }
+}
+
 fn tag(graph: &mut TypeGraph, value: &str) -> Annotation {
     Annotation {
         name: Some(graph.strings.get_or_intern("btf_decl_tag")),
@@ -152,6 +220,24 @@ fn graph(bound: Option<u64>) -> TypeGraph {
         },
     );
     graph
+}
+
+#[test]
+fn void_pointer_type_names() {
+    let mut graph = graph(None);
+    ty(
+        &mut graph,
+        9,
+        None,
+        Some(4),
+        TypeKind::Pointer { target: Some(3) },
+    );
+    let canonical = Canonical::new(&graph);
+    assert_eq!(canonical.lookup(&graph, "void*"), [3]);
+    assert_eq!(canonical.lookup(&graph, "void *"), [3]);
+    assert_eq!(canonical.lookup(&graph, "void**"), [9]);
+    assert!(canonical.lookup(&graph, "Missing*").is_empty());
+    assert!(canonical.lookup(&graph, "Missing**").is_empty());
 }
 
 fn walk(graph: &TypeGraph, count: u32) -> Walk {
@@ -327,4 +413,87 @@ fn array_elements_keep_pointer_typedef_counts() {
         }
         assert!(!walked.extents.contains_key(&48));
     }
+}
+
+/// Follow an array of pointers annotated with `DAT_BYTE_SCRIPT`.
+/// A 0x7F argument must not end the script. An unterminated script must not
+/// receive an inferred extent.
+#[test]
+fn byte_scripts_end_by_command_length() {
+    let mut graph = TypeGraph::default();
+    graph.units.push(Unit {
+        name: None,
+        address_size: 4,
+        macros: Vec::new(),
+    });
+    ty(
+        &mut graph,
+        1,
+        Some("u8"),
+        Some(1),
+        TypeKind::Base {
+            encoding: gimli::DW_ATE_unsigned_char.0,
+        },
+    );
+    ty(
+        &mut graph,
+        2,
+        None,
+        Some(4),
+        TypeKind::Pointer { target: Some(1) },
+    );
+    ty(
+        &mut graph,
+        3,
+        Some("Script"),
+        None,
+        TypeKind::Typedef { target: Some(2) },
+    );
+    let script = tag(&mut graph, "dat:bytescript(cpuCommandLength(_command))");
+    graph.types.get_mut(&3).unwrap().annotations = vec![script];
+    ty(
+        &mut graph,
+        4,
+        None,
+        Some(12),
+        TypeKind::Array {
+            element: Some(3),
+            dims: vec![Some(3)],
+        },
+    );
+    let mut data = Vec::new();
+    for word in [12u32, 16, 24] {
+        data.extend(word.to_be_bytes());
+    }
+    data.extend([0x80, 0x7F, 0x7F, 0, 0x01, 0xC0, 0x01, 0x02, 0x7F, 0, 0, 0]);
+    data.extend([0x01, 0x02]);
+    let archive = Archive {
+        header: ArchiveHeader {
+            file_size: 0,
+            data_size: data.len() as u32,
+            reloc_count: 3,
+            public_count: 0,
+            extern_count: 0,
+            version: [0; 12],
+        },
+        data: &data,
+        relocs: vec![0, 4, 8],
+        publics: Vec::new(),
+        externs: Vec::new(),
+        symbols: &[],
+    };
+    let canonical = Canonical::new(&graph);
+    let macros = HashMap::new();
+    let mut walker = Walker::new(&graph, &canonical, &macros, &archive);
+    walker.root(0, 4, "root", &[]);
+    let walked = walker.finish();
+    assert_eq!(walked.pointers.len(), 3);
+    assert_eq!(walked.extents.get(&12), Some(&15));
+    assert_eq!(walked.extents.get(&16), Some(&21));
+    assert!(!walked.extents.contains_key(&24));
+    assert_eq!(walked.issues.len(), 1);
+    assert!(matches!(
+        walked.issues.first(),
+        Some(Issue::OutOfBounds { at: 26, .. })
+    ));
 }

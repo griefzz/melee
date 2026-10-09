@@ -596,6 +596,18 @@ static const DatExpr* typedef_count(const DatArchive* a, int32_t type)
     return NULL;
 }
 
+/// Find a script annotation on a pointer typedef, following typedef aliases.
+static const DatScript* typedef_script(const DatArchive* a, int32_t type)
+{
+    while (type != DAT_NONE && T(a, type)->kind == DAT_KIND_TYPEDEF) {
+        if (T(a, type)->script != NULL) {
+            return T(a, type)->script;
+        }
+        type = T(a, type)->target;
+    }
+    return NULL;
+}
+
 /// The type a `DAT_TYPE` typedef on the way to the type refers to.
 static int32_t typedef_type(const DatArchive* a, int32_t type)
 {
@@ -1037,6 +1049,13 @@ static bool col_anim_command_length(uint64_t command, uint64_t* out)
     }
 }
 
+/// See `cpu_command_length` in `expr.rs`.
+static uint64_t cpu_command_length(uint64_t command)
+{
+    uint8_t c = (uint8_t) command;
+    return c == 0x7F ? 0 : c >= 0xC0 ? 3 : c >= 0x80 ? 2 : 1;
+}
+
 static bool it_command_length(uint64_t command, uint64_t* out)
 {
     uint64_t opcode = (command >> 26) & 0x3F;
@@ -1160,6 +1179,12 @@ static bool eval_at(const DatArchive* a, const Context* c, const DatExpr* e,
             return e->nargs == 1 && it_command_length(args[0], out);
         case DAT_FN_COL_ANIM_COMMAND_LENGTH:
             return e->nargs == 1 && col_anim_command_length(args[0], out);
+        case DAT_FN_CPU_COMMAND_LENGTH:
+            if (e->nargs != 1) {
+                return false;
+            }
+            *out = cpu_command_length(args[0]);
+            return true;
         case DAT_FN_GX_GET_TEX_BUFFER_SIZE:
             return e->nargs == 5 && gx_get_tex_buffer_size(
                                         (uint16_t) args[0], (uint16_t) args[1],
@@ -1400,6 +1425,28 @@ static void* native_array(DatArchive* a, uint32_t offset, int32_t e,
     return block;
 }
 
+/// Whether any member of a union has a `DAT_IF`.
+static bool conditioned(const DatType* u)
+{
+    if (u->kind != DAT_KIND_UNION) {
+        return false;
+    }
+    for (uint32_t i = 0; i < u->nmembers; i++) {
+        if (u->members[i].cond != NULL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void record_extent(DatArchive* a, uint32_t offset, uint64_t end)
+{
+    uint64_t* e = map_slot(&a->extents, offset, true);
+    if (end > *e) {
+        *e = end;
+    }
+}
+
 static void typed_extent(DatArchive* a, uint32_t offset, int32_t type,
                          uint64_t count)
 {
@@ -1410,11 +1457,11 @@ static void typed_extent(DatArchive* a, uint32_t offset, int32_t type,
     if (r == DAT_NONE) {
         return;
     }
-    uint64_t end = offset + (uint64_t) T(a, r)->size * count;
-    uint64_t* e = map_slot(&a->extents, offset, true);
-    if (end > *e) {
-        *e = end;
+    if (count == 1 && conditioned(T(a, r))) {
+        return;
     }
+    uint64_t end = offset + (uint64_t) T(a, r)->size * count;
+    record_extent(a, offset, end);
 }
 
 static void untyped(DatArchive* a)
@@ -1635,14 +1682,16 @@ static void counted(DatArchive* a, uint32_t offset, int32_t pointer,
     }
     uint64_t size = T(a, e)->size;
     uint64_t room = a->size > value ? a->size - value : 0;
-    if (count > room / (size ? size : 1)) {
+    if (count > room / (size ? size : 1) &&
+        !(count == 1 && conditioned(T(a, e))))
+    {
         issue(a, ISSUE_OUT_OF_BOUNDS, value, 0);
         return;
     }
     if (count > 0 && !opaque(a, raw)) {
         reference(a, slot, value, e);
     }
-    if (count > 0 && !T(a, e)->has_pointers) {
+    if (count > 0 && !T(a, e)->has_pointers && !conditioned(T(a, e))) {
         void* block = plain_array(a, value, raw, e, count);
         if (!visit(a, value, e)) {
             store_pointer(slot, block);
@@ -1883,16 +1932,18 @@ static void typed(DatArchive* a, uint32_t offset, int32_t target, void* native,
     }
 }
 
-/// How many words a command is, from its first word.
+/// Return the command length at `at`: bytes for byte scripts, words otherwise.
 static bool command_length(const DatArchive* a, const DatScript* s,
-                           uint32_t command, uint64_t* out)
+                           uint32_t at, uint64_t* out)
 {
+    /* Byte scripts use the full first byte and their own length expression. */
+    uint32_t command = s->bytes ? a->data[at] : word(a, at);
     uint64_t opcode = command >> 26;
-    if (opcode == 5 || opcode == 7) {
+    if (!s->bytes && (opcode == 5 || opcode == 7)) {
         *out = 2;
         return true;
     }
-    if (opcode < 10) {
+    if (!s->bytes && opcode < 10) {
         *out = 1;
         return true;
     }
@@ -1908,9 +1959,9 @@ static bool command_length(const DatArchive* a, const DatScript* s,
     return eval(a, &c, s->length, out);
 }
 
-/// Follow a `DAT_SCRIPT` pointer, and every script its commands point to.
-/// Scripts stay as they are in the data: big-endian words, their pointers
-/// offsets.
+/// Follow a script pointer and any scripts referenced by its commands.
+/// Keep script bytes unchanged, including big-endian words and pointer
+/// offsets in word scripts.
 static void script_at(DatArchive* a, uint32_t value, int32_t id,
                       const DatScript* s);
 
@@ -1937,7 +1988,7 @@ static void script(DatArchive* a, uint32_t offset, int32_t pointer,
     script_at(a, value, pointee(a, T(a, p)->target), s);
 }
 
-/// Walk the script at `value`, and every script its commands point to.
+/// Walk the script at `value` and any scripts its commands reference.
 static void script_at(DatArchive* a, uint32_t value, int32_t id,
                       const DatScript* s)
 {
@@ -1959,26 +2010,31 @@ static void script_at(DatArchive* a, uint32_t value, int32_t id,
                 issue(a, ISSUE_OUT_OF_BOUNDS, (uint32_t) at, 0);
                 break;
             }
-            uint8_t opcode = a->data[at] >> 2;
+            uint8_t opcode = s->bytes ? a->data[at] : a->data[at] >> 2;
             uint64_t length;
-            if (!command_length(a, s, word(a, at), &length)) {
+            if (!command_length(a, s, (uint32_t) at, &length)) {
                 issue(a, ISSUE_UNKNOWN_COMMAND, (uint32_t) at, opcode);
                 break;
             }
-            end = at + (length ? length : 1) * 4;
+            end = at + (length ? length : 1) * (s->bytes ? 1 : 4);
             if (end > a->size) {
                 issue(a, ISSUE_OUT_OF_BOUNDS, (uint32_t) at, 0);
                 break;
             }
-            for (uint64_t w = at; w < end; w += 4) {
-                if (bits_has(&a->reloc, w, a->size)) {
-                    bits_set(&a->pointer, w, a->size);
-                    VEC_PUSH(queue, word(a, w));
+            /* Byte scripts hold no pointers */
+            if (!s->bytes) {
+                for (uint64_t w = at; w < end; w += 4) {
+                    if (bits_has(&a->reloc, w, a->size)) {
+                        bits_set(&a->pointer, w, a->size);
+                        VEC_PUSH(queue, word(a, w));
+                    }
                 }
             }
-            /* A length expression ends the script with a command of 0
-             * words */
-            if (opcode == 0 || (length == 0 && s->table == NULL)) {
+            /* Word scripts end at opcode 0. A zero length also ends scripts
+             * sized by expressions. */
+            if ((opcode == 0 && !s->bytes) ||
+                (length == 0 && s->table == NULL))
+            {
                 ended = true;
                 break;
             }
@@ -2063,6 +2119,11 @@ static void layout(DatArchive* a, uint32_t offset, int32_t type, void* native,
         typed(a, offset, declared, native, native_size(a, type));
         return;
     }
+    const DatScript* s = typedef_script(a, type);
+    if (s != NULL) {
+        script(a, offset, type, s, native);
+        return;
+    }
     int32_t r = resolve(a, type);
     if (r == DAT_NONE) {
         return;
@@ -2071,7 +2132,9 @@ static void layout(DatArchive* a, uint32_t offset, int32_t type, void* native,
     if (t->kind == DAT_KIND_VOID) {
         return;
     }
-    if (!t->has_extent && (uint64_t) offset + t->size > a->size) {
+    if (!conditioned(t) && !t->has_extent &&
+        (uint64_t) offset + t->size > a->size)
+    {
         issue(a, ISSUE_OUT_OF_BOUNDS, offset, 0);
         return;
     }
@@ -2136,14 +2199,27 @@ static void layout(DatArchive* a, uint32_t offset, int32_t type, void* native,
         }
         break;
     case DAT_KIND_UNION: {
-        /* Views of plain data need no condition: nothing to follow */
-        if (!t->has_pointers) {
+        /* Views of plain data need no condition: nothing to follow.
+         * Conditions still choose among layouts of different sizes. */
+        bool plain = !t->has_pointers;
+        if (plain && !conditioned(t)) {
             relocated_words(a, offset, (uint64_t) offset + t->size);
             convert(a, offset, r, native);
             break;
         }
         uint32_t index;
-        switch (choose(a, r, offset, parent, &index)) {
+        ChoiceKind choice = choose(a, r, offset, parent, &index);
+        if (choice == CHOICE_AMBIGUOUS && plain) {
+            if ((uint64_t) offset + t->size > a->size) {
+                issue(a, ISSUE_OUT_OF_BOUNDS, offset, 0);
+                break;
+            }
+            record_extent(a, offset, (uint64_t) offset + t->size);
+            relocated_words(a, offset, (uint64_t) offset + t->size);
+            convert(a, offset, r, native);
+            break;
+        }
+        switch (choice) {
         case CHOICE_MEMBER: {
             Choice ch = { offset, t->id, index };
             uint64_t* seen = map_slot(&a->choices, key2(offset, t->id), true);
@@ -2155,6 +2231,7 @@ static void layout(DatArchive* a, uint32_t offset, int32_t type, void* native,
             if (m->type == DAT_NONE) {
                 break;
             }
+            typed_extent(a, offset, m->type, 1);
             const Scope* outer = a->env;
             a->env =
                 bound(a, outer, m, parent.record, parent.base, parent.some, 0);
@@ -2387,6 +2464,9 @@ static void* walk_root_array(DatArchive* a, uint32_t offset, int32_t element,
     if (e == DAT_NONE || T(a, e)->kind == DAT_KIND_VOID) {
         return NULL;
     }
+    if (bounded && count == 1 && conditioned(T(a, e))) {
+        return walk_root(a, offset, raw, env);
+    }
     uint64_t size = T(a, e)->size;
     if (size == 0 || !visit(a, offset, e)) {
         return native_of(a, offset, e);
@@ -2412,7 +2492,7 @@ static void* walk_root_array(DatArchive* a, uint32_t offset, int32_t element,
         count = room / size;
     }
     typed_extent(a, offset, raw, count);
-    if (!T(a, e)->has_pointers) {
+    if (!T(a, e)->has_pointers && !conditioned(T(a, e))) {
         void* block = plain_array(a, offset, raw, e, count);
         set_native(a, offset, e, block);
         relocated_words(a, offset, offset + count * size);
@@ -2692,7 +2772,7 @@ static void verify(Verify* v, uint32_t offset, int32_t type,
         return;
     }
     const DatType* t = T(a, r);
-    if ((uint64_t) offset + t->size > a->size) {
+    if (!conditioned(t) && (uint64_t) offset + t->size > a->size) {
         return;
     }
     uint64_t key = key2(offset, t->id), previous;

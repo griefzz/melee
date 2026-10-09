@@ -5,8 +5,6 @@
 
 #include <sysdolphin/baselib/forward.h>
 
-#include <placeholder.h>
-
 #include <dolphin/mtx.h>
 #include <melee/ft/dobjlist.h> // IWYU pragma: keep
 
@@ -97,18 +95,8 @@ typedef struct _ftPurinAttributes {
     float xDC;
     float xE0;
     float xE4;
-#if defined(PORT) || defined(LINT)
-    // PORT: four bytes, not UNK_T. UNK_T is `void*`, eight bytes here, so it
-    // moves every field after it, and this struct is laid over the
-    // character's attribute block at the console's offsets. Correct on
-    // PowerPC too. See docs/design/verification.md, "Fighter attribute
-    // layouts".
-    u32 xE8;
-    u32 xEC;
-#else
-    UNK_T xE8;
-    UNK_T xEC;
-#endif
+    float xE8;
+    float xEC;
     float xF0;
     float xF4;
     u8 _F8[0x100 - 0xF8];

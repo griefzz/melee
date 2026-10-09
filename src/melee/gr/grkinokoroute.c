@@ -31,10 +31,7 @@
 #include <melee/it/types.h> // Item, for grKinokoRoute_802084B4
 #endif
 
-static struct yakumono_param_t {
-    int x0;
-    grZakoGenerator_SpawnDesc x4;
-}* yakumono_param;
+static struct grKinokoRoute_YakumonoParam* yakumono_param;
 
 typedef struct grNKr_Depths {
     s16 x[51];
@@ -132,7 +129,7 @@ void grKinokoRoute_80207490(void)
 void grKinokoRoute_802074D8(void)
 {
     int val;
-    grZakoGenerator_801CAE04(&yakumono_param->x4);
+    grZakoGenerator_801CAE04(yakumono_param->spawn_descs);
     val = yakumono_param->x0;
     if (val != 0) {
         val = HSD_Randi(yakumono_param->x0);

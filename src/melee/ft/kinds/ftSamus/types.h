@@ -7,7 +7,6 @@
 #include <sysdolphin/baselib/forward.h>
 
 #include <dat_macros.h>
-#include <placeholder.h>
 
 #include <dolphin/mtx.h>
 #include <melee/ft/kinds/ftCommon/types.h>
@@ -74,16 +73,7 @@ typedef struct _ftSamusAttributes {
     /* +C4 */ int xC4;
     /* +C8 */ int xC8;
     /* +CC */ f32 xCC;
-#if defined(PORT) || defined(LINT)
-    // PORT: four bytes, not UNK_T. UNK_T is `void*`, eight bytes here, so it
-    // moves every field after it, and this struct is laid over the
-    // character's attribute block at the console's offsets. Correct on
-    // PowerPC too. See docs/design/verification.md, "Fighter attribute
-    // layouts".
-    /* +D0 */ u32 xD0;
-#else
-    /* +D0 */ UNK_T xD0;
-#endif
+    /* +D0 */ int xD0;
 } ftSs_DatAttrs;
 
 /// Samus's grapple-beam accessory (ftSs_Init_CreateThrowGrappleBeam).

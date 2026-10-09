@@ -7,6 +7,8 @@
 #include <melee/lb/forward.h>
 #include <sysdolphin/baselib/forward.h>
 
+#include <dat_macros.h>
+
 #include <dolphin/mtx.h>
 #include <dolphin/types.h>
 
@@ -29,6 +31,7 @@ typedef struct ft_800898B4_t ft_800898B4_t;
 typedef struct ftCo_803C6594_t ftCo_803C6594_t;
 typedef struct ftCo_DatAttrs_xBC_t ftCo_DatAttrs_xBC_t;
 typedef struct ftCommonData ftCommonData;
+typedef union ftData_ExtAttr ftData_ExtAttr;
 typedef struct ftData ftData;
 typedef struct ftData_UnkCountStruct ftData_UnkCountStruct;
 typedef struct ftData_x58_t ftData_x58_t;
@@ -48,10 +51,15 @@ typedef struct KirbyHatStruct KirbyHatStruct;
 typedef struct KirbyHatGwAttrs KirbyHatGwAttrs;
 #endif
 typedef struct MotionState MotionState;
+typedef struct WaitStruct WaitStruct;
 typedef struct TempS TempS;
 typedef struct UnkCostumeStruct UnkCostumeStruct;
 typedef struct UnkFloat6_Camera UnkFloat6_Camera;
 typedef u32 MotionFlags;
+
+/// CPU bytecode interpreted by #ftCo_800B3E04. Each #CPUCommand is
+/// followed by its argument bytes; #CpuCmd_Done ends the script.
+typedef u8* CpuCmdScript DAT_BYTE_SCRIPT(cpuCommandLength(_command));
 
 #ifdef M2C
 typedef struct Fighter_GObj Fighter_GObj;

@@ -32,7 +32,8 @@ pub enum Issue {
     /// A union none of whose members could be chosen, so none was
     /// followed.
     AmbiguousUnion { at: u32, path: String },
-    /// A `DAT_SCRIPT` command whose opcode has no known length.
+    /// A script command with an unknown length. For byte scripts, the
+    /// opcode is the whole first byte.
     UnknownCommand { at: u32, opcode: u8, path: String },
 }
 
@@ -292,6 +293,9 @@ impl<'a> Walker<'a> {
         let Some(element) = self.resolve(Some(element)) else {
             return;
         };
+        if count == Some(1) && self.conditioned_union(element) {
+            return self.root(offset, raw, name, bindings);
+        }
         let (Some(id), Some(size)) = (
             self.canonical.of(element),
             self.canonical.byte_size(self.graph, element),
@@ -327,7 +331,7 @@ impl<'a> Walker<'a> {
         let count = count.min(room / size);
         self.typed_extent(offset, raw, count);
         // Plain data, such as a texture: only check it isn't relocated
-        if !self.has_pointers(element) {
+        if !self.has_pointers(element) && !self.conditioned_union(element) {
             let end = offset + (count * size) as u32;
             let mut words: Vec<_> = self
                 .relocs
@@ -415,11 +419,15 @@ impl<'a> Walker<'a> {
         if let Some(target) = self.typedef_type(die) {
             return self.typed(offset, target, path);
         }
+        if let Some(script) = self.typedef_script(die) {
+            return self.script(offset, die, &script, path);
+        }
         let Some(die) = self.resolve(Some(die)) else {
             return;
         };
         // A record ending in a `DAT_EXTENT` array has no fixed size
-        if !self.has_extent(die)
+        if !self.conditioned_union(die)
+            && !self.has_extent(die)
             && let Some(size) = self.canonical.byte_size(self.graph, die)
             && u64::from(offset) + size > self.data.len() as u64
         {
@@ -488,8 +496,11 @@ impl<'a> Walker<'a> {
                 members,
                 ..
             } => {
-                // Views of plain data need no condition: nothing to follow
-                if !self.has_pointers(die) {
+                // Views of plain data need no condition: nothing to follow.
+                // Conditions still choose among layouts of different sizes.
+                let plain = !self.has_pointers(die);
+                if plain && !members.iter().any(|m| self.condition(m).is_some())
+                {
                     return self.scalar(offset, die, path);
                 }
                 let member = match self.choose(members, offset, parent) {
@@ -505,6 +516,19 @@ impl<'a> Walker<'a> {
                         member
                     }
                     Choice::Unused => return,
+                    Choice::Ambiguous if plain => {
+                        let size =
+                            self.canonical.byte_size(graph, die).unwrap_or(0);
+                        if u64::from(offset) + size > self.data.len() as u64 {
+                            self.issue(Issue::OutOfBounds {
+                                at: offset,
+                                path: path.to_owned(),
+                            });
+                            return;
+                        }
+                        self.record_extent(offset, offset + size as u32);
+                        return self.scalar(offset, die, path);
+                    }
                     // Following a guess could misread everything behind it
                     Choice::Ambiguous => {
                         self.issue(Issue::AmbiguousUnion {
@@ -515,6 +539,7 @@ impl<'a> Walker<'a> {
                     }
                 };
                 if let Some(ty) = member.ty {
+                    self.typed_extent(offset, ty, 1);
                     let path = field(path, member.name.map(|n| graph.str(n)));
                     let outer = self.env.clone();
                     self.env = self.bound(&outer, &self.binds(member), parent, 0);
@@ -755,7 +780,9 @@ impl<'a> Walker<'a> {
         // A count beyond the data means the count or the pointer is wrong:
         // one finding, and nothing followed
         let room = (self.data.len() as u64).saturating_sub(value.into());
-        if count > room / size.max(1) {
+        if count > room / size.max(1)
+            && !(count == 1 && self.conditioned_union(element))
+        {
             self.issue(Issue::OutOfBounds {
                 at: value,
                 path: format!("{path}->[{count}]"),
@@ -763,7 +790,10 @@ impl<'a> Walker<'a> {
             return;
         }
         // Plain data, such as texels: one object, nothing to follow
-        if count > 0 && !self.has_pointers(element) {
+        if count > 0
+            && !self.has_pointers(element)
+            && !self.conditioned_union(element)
+        {
             let Some(id) = self.canonical.of(element) else {
                 return;
             };
@@ -1057,11 +1087,42 @@ impl<'a> Walker<'a> {
         })
     }
 
-    /// How many words the command whose first word is `command` is: one of
-    /// the generic commands, or else one of the script's own.
-    fn command_length(&self, script: &Script, command: u32) -> Option<u64> {
-        let opcode = u64::from(command >> 26);
-        if let Some(length) = generic_command_length(opcode) {
+    /// Find `DAT_SCRIPT` or `DAT_BYTE_SCRIPT` on a pointer typedef,
+    /// following typedef aliases.
+    fn typedef_script(&self, mut die: DieId) -> Option<Script> {
+        while let Some(ty) = self.graph.types.get(&die) {
+            let TypeKind::Typedef {
+                target: Some(target),
+            } = ty.kind
+            else {
+                return None;
+            };
+            let script = ty.annotations.iter().find_map(|a| {
+                match DatTag::parse(self.graph.str(a.value?))? {
+                    DatTag::Script(script) => Some(script),
+                    _ => None,
+                }
+            });
+            if script.is_some() {
+                return script;
+            }
+            die = target;
+        }
+        None
+    }
+
+    /// Return the command length at `at`: bytes for byte scripts, words
+    /// otherwise.
+    fn command_length(&self, script: &Script, at: u32) -> Option<u64> {
+        // Byte scripts use the full first byte and their own length expression.
+        let bytes = matches!(script, Script::Bytes(_));
+        let command = if bytes {
+            u64::from(self.data[at as usize])
+        } else {
+            u64::from(self.word(at))
+        };
+        let opcode = command >> 26;
+        if !bytes && let Some(length) = generic_command_length(opcode) {
             return Some(length);
         }
         match script {
@@ -1079,13 +1140,15 @@ impl<'a> Walker<'a> {
                 }
                 Some(self.graph.bytes(table.address + index, 1)?[0].into())
             }
-            Script::Length(length) => eval_expr(self.macros, length, &|name| {
-                (name == "_command").then_some(u64::from(command))
-            }),
+            Script::Length(length) | Script::Bytes(length) => {
+                eval_expr(self.macros, length, &|name| {
+                    (name == "_command").then_some(command)
+                })
+            }
         }
     }
 
-    /// Follow a `DAT_SCRIPT` pointer, and every script its commands point to.
+    /// Follow a script pointer and any scripts referenced by its commands.
     fn script(
         &mut self,
         offset: u32,
@@ -1120,7 +1183,7 @@ impl<'a> Walker<'a> {
         self.script_at(offset, Some(element), script, name.to_owned());
     }
 
-    /// Walk the script at `value`, and every script its commands point to.
+    /// Walk the script at `value` and any scripts its commands reference.
     fn script_at(
         &mut self,
         value: u32,
@@ -1129,6 +1192,8 @@ impl<'a> Walker<'a> {
         path: String,
     ) {
         let id = self.pointee(target).and_then(|t| self.canonical.of(t));
+        let bytes = matches!(script, Script::Bytes(_));
+        let unit = if bytes { 1 } else { 4 };
         let mut queue = vec![(value, path)];
         while let Some((start, path)) = queue.pop() {
             if !self.scripts.insert(start) {
@@ -1149,9 +1214,8 @@ impl<'a> Walker<'a> {
                     });
                     break;
                 };
-                let opcode = first >> 2;
-                let Some(length) = self.command_length(script, self.word(at))
-                else {
+                let opcode = if bytes { first } else { first >> 2 };
+                let Some(length) = self.command_length(script, at) else {
                     self.issue(Issue::UnknownCommand {
                         at,
                         opcode,
@@ -1159,7 +1223,7 @@ impl<'a> Walker<'a> {
                     });
                     break;
                 };
-                let end = at + (length.max(1) * 4) as u32;
+                let end = at + (length.max(1) * unit) as u32;
                 if end as usize > self.data.len() {
                     self.issue(Issue::OutOfBounds {
                         at,
@@ -1167,18 +1231,22 @@ impl<'a> Walker<'a> {
                     });
                     break;
                 }
-                for word in (at..end).step_by(4) {
-                    if self.relocs.contains(&word) {
-                        self.walk.pointers.insert(word);
-                        queue.push((
-                            self.word(word),
-                            format!("{path}+0x{:X}->", word - start),
-                        ));
+                // Byte scripts hold no pointers
+                if !bytes {
+                    for word in (at..end).step_by(4) {
+                        if self.relocs.contains(&word) {
+                            self.walk.pointers.insert(word);
+                            queue.push((
+                                self.word(word),
+                                format!("{path}+0x{:X}->", word - start),
+                            ));
+                        }
                     }
                 }
-                // A length expression ends the script with a command of 0 words
-                if opcode == 0
-                    || (length == 0 && matches!(script, Script::Length(_)))
+                // Word scripts end at opcode 0. A zero length also ends
+                // scripts sized by expressions.
+                if (opcode == 0 && !bytes)
+                    || (length == 0 && !matches!(script, Script::Table(_)))
                 {
                     ended = Some(end);
                     break;
@@ -1224,7 +1292,9 @@ impl<'a> Walker<'a> {
     /// Record `count` elements of `die` at `offset` as typed data, unless
     /// they are raw bytes.
     fn typed_extent(&mut self, offset: u32, die: DieId, count: u64) {
-        if self.is_raw(die) {
+        // A separately reached polymorphic record holds only its selected
+        // member. Arrays still use the union's declared element stride.
+        if self.is_raw(die) || (count == 1 && self.conditioned_union(die)) {
             return;
         }
         let Some(size) = self
@@ -1234,8 +1304,20 @@ impl<'a> Walker<'a> {
             return;
         };
         let end = offset + (size * count) as u32;
+        self.record_extent(offset, end);
+    }
+
+    fn record_extent(&mut self, offset: u32, end: u32) {
         let furthest = self.walk.extents.entry(offset).or_insert(end);
         *furthest = end.max(*furthest);
+    }
+
+    fn conditioned_union(&self, die: DieId) -> bool {
+        let Some(die) = self.resolve(Some(die)) else {
+            return false;
+        };
+        matches!(&self.graph.types[&die].kind, TypeKind::Record { union: true, members, .. }
+            if members.iter().any(|m| self.condition(m).is_some()))
     }
 
     /// Whether `die` is raw bytes: `u8`, or arrays of it, not named by a
@@ -1405,12 +1487,7 @@ impl<'a> Walker<'a> {
         }
         let mut decided = true;
         for member in members {
-            let condition = member.annotations.iter().find_map(|a| {
-                match DatTag::parse(self.graph.str(a.value?))? {
-                    DatTag::If(cond) => Some(cond),
-                    _ => None,
-                }
-            });
+            let condition = self.condition(member);
             let conditioned = condition.is_some();
             let holds = condition.and_then(|cond| {
                 eval_expr(self.macros, &cond, &|name| {
@@ -1441,6 +1518,16 @@ impl<'a> Walker<'a> {
         } else {
             Choice::Ambiguous
         }
+    }
+
+    /// A union member's `dat:if` condition.
+    fn condition(&self, member: &Member) -> Option<Expr> {
+        member.annotations.iter().find_map(|a| {
+            match DatTag::parse(self.graph.str(a.value?))? {
+                DatTag::If(cond) => Some(cond),
+                _ => None,
+            }
+        })
     }
 
     /// The value of a scalar field of the record at `base`.

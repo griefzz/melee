@@ -6,8 +6,6 @@
 #include <melee/ft/kinds/ftLink/forward.h> // IWYU pragma: export
 #include <melee/it/forward.h>
 
-#include <placeholder.h>
-
 #include <dolphin/mtx.h>
 #include <melee/ft/kinds/ftMars/types.h>
 #include <melee/lb/types.h>
@@ -41,24 +39,10 @@ struct ftLk_DatAttrs {
     /* +88 */ s32 x88;
     /* +8C */ s32 x8C;
     /* +90 */ s32 x90;
-#if defined(PORT) || defined(LINT)
-    // PORT: four bytes, not UNK_T, here and at x9C and xA0. UNK_T is `void*`,
-    // eight bytes here, so it moves every field after it, and this struct is
-    // laid over the character's attribute block at the console's offsets.
-    // Correct on PowerPC too. See docs/design/verification.md, "Fighter
-    // attribute layouts".
-    /* +94 */ u32 x94;
-#else
-    /* +94 */ UNK_T x94;
-#endif
+    /* +94 */ s32 x94;
     /* +98 */ s32 x98;
-#if defined(PORT) || defined(LINT)
-    /* +9C */ u32 x9C;
-    /* +A0 */ u32 xA0;
-#else
-    /* +9C */ UNK_T x9C;
-    /* +A0 */ UNK_T xA0;
-#endif
+    /* +9C */ s32 x9C;
+    /* +A0 */ s32 xA0;
     /* +A4 */ int xA4;
     /* +A8 */ s32 xA8;
     /* +AC */ int xAC;
