@@ -403,7 +403,15 @@ void fn_80184AB8(HSD_GObj* arg0)
             if ((s32) lbl_804D6608 != -1) {
                 lbAudioAx_800236B8(lbl_804D6608);
             }
+#ifdef PORT
+            // PORT: the intro_announced_char hook, where Slippi's
+            // PlayOpponentCharAnnouncer.asm picks the character
+            // (fn_80184AB8+0x32C).
+            gm_80168C5C(
+                (u32) port_hook_intro_announced_char(lbl_8047368C.xF4[0]));
+#else
             gm_80168C5C((u32) lbl_8047368C.xF4[0]);
+#endif
             return;
         case 0x5:
             for (i = 0; i < (s32) lbl_8047368C.xEF; i++) {

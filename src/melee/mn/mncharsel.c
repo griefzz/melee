@@ -1678,6 +1678,27 @@ void mnCharSel_8025EE8C(u8 idx)
 }
 
 static struct CSSCursorData* mnCharSel_804A0BC0[4];
+#ifdef PORT
+// PORT: the screen's state that Slippi's Teams codes reach by address
+// (Online/Menus/CSS/Teams/*.asm), for the Slippi mod.
+void mnCharSel_GetState(MnCharSelState* out)
+{
+    out->models = css_models;
+    out->root = mnCharSel_804D6CC0;
+    out->css = mnCharSel_804D6CB0;
+    out->doors = &mnCharSel_803F0DFC;
+    out->human = &mnCharSel_804D6CF0;
+    out->scene_change = &mnCharSel_804D6CF6;
+    out->selected = &mnCharSel_804D6CF7;
+    out->portrait_colors = mnCharSel_804D50D8;
+    out->cursor_x = 0.0f;
+    out->cursor_y = 0.0f;
+    if (mnCharSel_804A0BC0[0] != NULL) {
+        out->cursor_x = mnCharSel_804A0BC0[0]->xC;
+        out->cursor_y = mnCharSel_804A0BC0[0]->x10;
+    }
+}
+#endif
 static struct CSSCharModel {
     /* 0x00 */ HSD_GObj* gobj;
     /* 0x04 */ u8 x4;
@@ -2316,8 +2337,17 @@ static inline void updateCursorDisplay(HSD_JObj* jobj,
             lb_80011E24(jobj, color_jobj, 3, -1);
             {
                 HSD_JObj* anim_jobj = *color_jobj;
+#ifdef PORT
+                // PORT: the css_cursor_color hook, where Slippi's
+                // AnimateCursorPort.asm changes this frame
+                // (mnCharSel_CursorThink+0x21D8).
+                HSD_ForeachAnim(anim_jobj, JOBJ_TYPE, TOBJ_MASK,
+                                HSD_AObjReqAnim, AOBJ_ARG_AF,
+                                (f32) port_hook_css_cursor_color(color_idx));
+#else
                 HSD_ForeachAnim(anim_jobj, JOBJ_TYPE, TOBJ_MASK,
                                 HSD_AObjReqAnim, AOBJ_ARG_AF, (f32) color_idx);
+#endif
             }
             HSD_JObjAnimAll(*color_jobj);
             HSD_ForeachAnim(*color_jobj, JOBJ_TYPE, TOBJ_MASK,
@@ -2687,6 +2717,13 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                                 break;
                                             }
                                         }
+#ifdef PORT
+                                        // PORT: the css_random_costume hook,
+                                        // where Slippi's
+                                        // PreventColorResetRandomChar.asm
+                                        // runs (mnCharSel_CursorThink+0x8F0).
+                                        port_hook_css_random_costume(door);
+#endif
                                         mnCharSel_8025DB34(door);
                                         cursor->x5 = 2;
                                         lbAudioAx_800237A8(0xB8, 0x7F, 0x40);
@@ -2706,6 +2743,14 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                         m2->xC > icons[i].bound_d &&
                                         icons[i].state >= 1)
                                     {
+#ifdef PORT
+                                        // PORT: the css_icon_hovered hook,
+                                        // where Slippi's
+                                        // PreventColorResetCharHover.asm runs,
+                                        // before this store
+                                        // (mnCharSel_CursorThink+0x988).
+                                        port_hook_css_icon_hovered(door);
+#endif
                                         mnCharSel_803F0DFC.doors[door]
                                             .sel_icon = (u8) i;
                                         mnCharSel_8025DB34(door);
@@ -2722,6 +2767,18 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                             } else {
                                                 player_idx = door;
                                             }
+#ifdef PORT
+                                            // PORT: the css_character_chosen
+                                            // hook, where Slippi's
+                                            // PreventWrongCSPOnCharSelect.asm
+                                            // runs, before this store
+                                            // (mnCharSel_CursorThink+0x9E8).
+                                            port_hook_css_character_chosen(
+                                                icons[mnCharSel_803F0DFC
+                                                          .doors[door]
+                                                          .sel_icon]
+                                                    .char_kind);
+#endif
                                             mnCharSel_804D6CB0->vs.start
                                                 .players[player_idx]
                                                 .ckind =
@@ -2786,6 +2843,15 @@ void mnCharSel_CursorThink(HSD_GObj* gobj)
                                 cancel_or_costume:
                                     if (trigger & HSD_PAD_B) {
                                         if (mnCharSel_8025FDEC(door) == 0) {
+#ifdef PORT
+                                            // PORT: the css_character_unpicked
+                                            // hook, where Slippi's
+                                            // PreventColorResetLastChar.asm
+                                            // runs (mnCharSel_CursorThink
+                                            // +0xB74).
+                                            port_hook_css_character_unpicked(
+                                                door);
+#endif
                                             mnCharSel_8025DB34(door);
                                             cursor->x5 = 2;
                                         }
@@ -3627,6 +3693,11 @@ void fn_80262648(HSD_GObj* gobj)
         }
     }
 
+#ifdef PORT
+    // PORT: the css_token_color hook, where Slippi's AnimateToken.asm
+    // changes the colour just chosen (fn_80262648+0x120).
+    model->x6 = (u8) port_hook_css_token_color(model->x6);
+#endif
     HSD_JObjClearFlagsAll(jobj, JOBJ_HIDDEN);
     model->x7 = (u8) (model->x7 + 1);
 
@@ -4875,6 +4946,11 @@ s32 mnCharSel_802640A0(void)
             }
         }
         lb_8000B1CC(sp108, NULL, &spEC);
+#ifdef PORT
+        // PORT: the css_name_list_made hook, where Slippi's
+        // InitTeamToggleButton.asm runs (mnCharSel_802640A0+0x1254).
+        port_hook_css_name_list_made();
+#endif
         td->name_ls = HSD_SisLib_803A6754(0, ctx);
         td->name_ls->default_fitting = 1;
         text = td->name_ls;

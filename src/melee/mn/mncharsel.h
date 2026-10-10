@@ -57,5 +57,20 @@ struct MnSelectChrDataTable {
 // PORT: the icon table (25 playable icons), for a mod that edits it at run
 // time.
 CSSIcon* mnCharSel_GetIcons(int* count);
+
+// PORT: the screen's state that Slippi's Teams codes read and write by
+// address, for the Slippi mod.
+typedef struct MnCharSelState {
+    MnSelectChrModels* models; ///< css_models
+    HSD_JObj* root;            ///< mnCharSel_804D6CC0, the menu's jobj
+    CSSData* css;              ///< mnCharSel_804D6CB0
+    CSSDoorsData* doors;       ///< mnCharSel_803F0DFC
+    s8* human;                 ///< mnCharSel_804D6CF0, the 1P player
+    u8* scene_change;          ///< mnCharSel_804D6CF6
+    u8* selected;              ///< mnCharSel_804D6CF7
+    u8* portrait_colors;       ///< mnCharSel_804D50D8, by player
+    f32 cursor_x, cursor_y;    ///< the first cursor's, or 0 with none
+} MnCharSelState;
+void mnCharSel_GetState(MnCharSelState* out);
 #endif
 #endif
