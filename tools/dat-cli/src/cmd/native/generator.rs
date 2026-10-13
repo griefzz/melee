@@ -48,8 +48,9 @@ impl Kind {
             Kind::Struct => "DAT_KIND_STRUCT",
             Kind::Union => "DAT_KIND_UNION",
             Kind::Array => "DAT_KIND_ARRAY",
-            Kind::Typedef => "DAT_KIND_TYPEDEF",
-            Kind::Qualifier => "DAT_KIND_QUALIFIER",
+            Kind::Typedef | Kind::Qualifier => {
+                unreachable!("storage kind is resolved")
+            }
         }
     }
 }
@@ -395,6 +396,31 @@ impl<'a> Generator<'a> {
             }
             TypeKind::Pointer { .. } => Some("void*".to_owned()),
             _ => None,
+        }
+    }
+
+    /// The token spelling used by HSD_ArchiveGetPublicAs, including pointers.
+    pub fn dispatch_spelling(&self, die: DieId) -> Option<String> {
+        match &self.ty(die).kind {
+            TypeKind::Pointer { target } => {
+                Some(format!("{}*", self.dispatch_spelling((*target)?)?))
+            }
+            TypeKind::Const { target } | TypeKind::Volatile { target } => {
+                let target = (*target)?;
+                let spelling = self.dispatch_spelling(target)?;
+                let qualifier =
+                    if matches!(self.ty(die).kind, TypeKind::Const { .. }) {
+                        "const"
+                    } else {
+                        "volatile"
+                    };
+                if matches!(self.ty(target).kind, TypeKind::Pointer { .. }) {
+                    Some(format!("{spelling} {qualifier}"))
+                } else {
+                    Some(format!("{qualifier} {spelling}"))
+                }
+            }
+            _ => self.spell(die).filter(|s| !s.contains("typeof")),
         }
     }
 
@@ -827,7 +853,9 @@ impl<'a> Generator<'a> {
                 DatTag::Count(value) if row.count.is_none() => {
                     row.count = Some(value);
                 }
-                DatTag::Terminated(value, length) if row.terminator.is_none() => {
+                DatTag::Terminated(value, length)
+                    if row.terminator.is_none() =>
+                {
                     row.terminator = Some(value);
                     row.terminator_length = length;
                 }
@@ -914,12 +942,14 @@ impl<'a> Generator<'a> {
             for (index, (at, archive)) in archives.iter().enumerate() {
                 let mut roots = Vec::new();
                 let mut seen = BTreeSet::new();
-                for (name, _) in archive.named_publics() {
+                for (name, symbol) in archive.named_publics() {
                     let name = String::from_utf8_lossy(name).into_owned();
                     if !seen.insert(name.clone()) {
                         continue;
                     }
-                    let Some((die, count)) = project.root(&name, &file) else {
+                    let Some((die, count)) =
+                        project.root(&name, &file, *at, symbol.offset)
+                    else {
                         continue;
                     };
                     let binds = project
@@ -937,7 +967,7 @@ impl<'a> Generator<'a> {
                         binds,
                     });
                 }
-                for (address, entry) in project.aliases(&file, *at) {
+                for (address, entry) in project.aliases(&file, *at, archive) {
                     let Some(ty) = &entry.ty else { continue };
                     roots.push(RootRow {
                         name: entry.name.clone(),

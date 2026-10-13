@@ -131,6 +131,9 @@ void lbArchive_80016EFC(HSD_Archive* archive)
 {
     HSD_ASSERT(0xFC, archive);
     HSD_ASSERT(0xFD, archive->flags & HSD_ARCHIVE_DONT_FREE);
+#ifdef TARGET_PC
+    HSD_ArchiveReleaseNative(archive);
+#endif
 #ifdef PORT
     // PORT: the file buffer is `top_ptr`, which HSD_ArchiveParse() sets
     // (baselib/archive.c). On the console that is also `data` less the

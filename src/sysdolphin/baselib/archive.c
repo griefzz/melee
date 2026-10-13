@@ -9,6 +9,8 @@
 #include <port/dat.h> // port_dat_transcode(), port_dat_locate_extern()
 #endif
 
+// Native builds use the generated reader adapter in tools/dat-cli/native.
+#ifndef TARGET_PC
 static inline void Locate(HSD_Archive* archive)
 {
     u32 i;
@@ -154,3 +156,5 @@ void HSD_ArchiveLocateExtern(HSD_Archive* archive, const char* symbols,
     }
 #endif
 }
+
+#endif
